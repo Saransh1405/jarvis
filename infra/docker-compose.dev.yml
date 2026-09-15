@@ -1,0 +1,35 @@
+services:
+  api:
+    build:
+      context: ../python
+      dockerfile: Dockerfile
+    volumes:
+      - ../python/jarvis_ai:/app/jarvis_ai:ro
+    environment:
+      PYTHONPATH: /install/lib/python3.12/site-packages:/app
+    command:
+      [
+        "uvicorn",
+        "jarvis_ai.api.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload",
+        "--reload-dir",
+        "/app/jarvis_ai",
+      ]
+    ports:
+      - "${PYTHON_API_PORT:-8000}:8000"
+
+  gateway:
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+
+  postgres:
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+
+  redis:
+    ports:
+      - "${REDIS_PORT:-6379}:6379"

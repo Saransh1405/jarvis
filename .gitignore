@@ -1,0 +1,22 @@
+# Environment (secrets)
+.env
+
+# Go
+go/bin/
+go/vendor/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.python-version
+*.egg-info/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# General
+.DS_Store
+.idea/
+.vscode/
+*.swp
