@@ -3,23 +3,10 @@ import pytest
 from jarvis_ai.llm.agent_types import AgentTurn, ToolCall
 from jarvis_ai.llm.stub import StubLLMProvider
 from jarvis_ai.orchestrator.agent_loop import run_agent
+from tests.conftest import ScriptedLLM
 from jarvis_ai.orchestrator.orchestrator import Orchestrator
 from jarvis_ai.orchestrator.routing import try_extract_calculator_expression
 from jarvis_ai.tools import build_default_registry
-
-
-class ScriptedLLM(StubLLMProvider):
-    """Test double that returns predetermined agent turns."""
-
-    def __init__(self, turns: list[AgentTurn]) -> None:
-        super().__init__()
-        self._turns = turns
-        self._index = 0
-
-    async def agent_turn(self, messages, tools):
-        turn = self._turns[self._index]
-        self._index += 1
-        return turn
 
 
 @pytest.mark.parametrize(
@@ -84,6 +71,28 @@ async def test_orchestrator_falls_back_to_llm() -> None:
     result = await orch.chat("hello", None)
     assert result["message"] == "Echo: hello"
     assert result["source"] == "llm"
+    assert result["tools_used"] is None
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_blocks_save_note_pending_confirmation() -> None:
+    llm = ScriptedLLM(
+        [
+            AgentTurn(
+                tool_calls=[
+                    ToolCall(
+                        id="call_1",
+                        name="save_note",
+                        arguments={"content": "buy milk"},
+                    )
+                ]
+            ),
+        ]
+    )
+    orch = Orchestrator(llm=llm, tools=build_default_registry())
+    result = await orch.chat("save a note: buy milk", None)
+    assert result["pending_action"]["tool_name"] == "save_note"
+    assert result["source"] == "policy:pending:save_note"
     assert result["tools_used"] is None
 
 

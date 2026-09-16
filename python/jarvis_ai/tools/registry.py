@@ -4,6 +4,7 @@ from typing import Any
 
 from jarvis_ai.tools.base import Tool
 from jarvis_ai.tools.calculator import calculator_tool
+from jarvis_ai.tools.save_note import save_note_tool
 
 
 class ToolNotFoundError(KeyError):
@@ -45,4 +46,5 @@ def build_default_registry() -> ToolRegistry:
     """Registry with all built-in Phase 2 starter tools."""
     registry = ToolRegistry()
     registry.register(calculator_tool())
+    registry.register(save_note_tool())
     return registry

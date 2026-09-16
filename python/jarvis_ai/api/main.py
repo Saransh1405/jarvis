@@ -20,6 +20,12 @@ class ChatRequest(BaseModel):
     conversation_id: str | None = None
 
 
+class PendingActionResponse(BaseModel):
+    tool_call_id: str
+    tool_name: str
+    arguments: dict
+
+
 class ChatResponse(BaseModel):
     message: str
     conversation_id: str
@@ -27,6 +33,7 @@ class ChatResponse(BaseModel):
     model: str | None = None
     source: str | None = None
     tools_used: list[str] | None = None
+    pending_action: PendingActionResponse | None = None
 
 
 @app.get("/health")
