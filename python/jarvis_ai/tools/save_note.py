@@ -4,13 +4,30 @@ from typing import Any
 
 from jarvis_ai.policy.policy import Tier
 from jarvis_ai.tools.base import Tool
+from jarvis_ai.tools.context import ToolContext
 
 
-def _run_save_note(args: dict[str, Any]) -> str:
+def _require_user(ctx: ToolContext) -> str | None:
+    if not ctx.user_id:
+        return "Error: user identity is required to save notes (use gateway auth or X-User-ID)."
+    if ctx.notes is None:
+        return "Error: notes storage is not configured."
+    return None
+
+
+async def _run_save_note(args: dict[str, Any], ctx: ToolContext) -> str:
+    err = _require_user(ctx)
+    if err:
+        return err
+
     content = str(args.get("content", "")).strip()
     if not content:
         return "Error: note content cannot be empty."
-    return f"Saved note: {content}"
+
+    note_id = await ctx.notes.create(ctx.user_id, content)
+    if ctx.memory is not None:
+        await ctx.memory.add_fact(ctx.user_id, content, source="note")
+    return f"Saved note {note_id}: {content}"
 
 
 def save_note_tool() -> Tool:
@@ -28,5 +45,5 @@ def save_note_tool() -> Tool:
             },
             "required": ["content"],
         },
-        run=_run_save_note,
+        async_run=_run_save_note,
     )

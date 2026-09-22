@@ -4,7 +4,12 @@ from typing import Any
 
 from jarvis_ai.tools.base import Tool
 from jarvis_ai.tools.calculator import calculator_tool
+from jarvis_ai.tools.context import ToolContext
+from jarvis_ai.tools.get_note import get_note_tool
+from jarvis_ai.tools.list_reminders import list_reminders_tool
 from jarvis_ai.tools.save_note import save_note_tool
+from jarvis_ai.tools.search_memory import search_memory_tool
+from jarvis_ai.tools.set_reminder import set_reminder_tool
 
 
 class ToolNotFoundError(KeyError):
@@ -31,11 +36,11 @@ class ToolRegistry:
     def names(self) -> list[str]:
         return sorted(self._tools.keys())
 
-    def run(self, name: str, args: dict[str, Any]) -> str:
+    async def run(self, name: str, args: dict[str, Any], ctx: ToolContext) -> str:
         tool = self._tools.get(name)
         if tool is None:
             raise ToolNotFoundError(name)
-        return tool.run(args)
+        return await tool.execute(args, ctx)
 
     def schemas_for_llm(self) -> list[dict[str, Any]]:
         """OpenAI-compatible tool definitions for the agent loop (Phase 2.4)."""
@@ -47,4 +52,8 @@ def build_default_registry() -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(calculator_tool())
     registry.register(save_note_tool())
+    registry.register(get_note_tool())
+    registry.register(set_reminder_tool())
+    registry.register(list_reminders_tool())
+    registry.register(search_memory_tool())
     return registry

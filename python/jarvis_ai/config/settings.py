@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 LLMProviderName = Literal["stub", "openai", "anthropic"]
@@ -8,7 +8,7 @@ LLMProviderName = Literal["stub", "openai", "anthropic"]
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", "../.env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     llm_max_tokens: int = Field(default=4096, ge=1, le=200000)
+
+    # Postgres (Neon or local). DATABASE_URL takes precedence over POSTGRES_DSN.
+    database_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("DATABASE_URL", "POSTGRES_DSN"),
+    )
 
     @property
     def bind_addr(self) -> str:

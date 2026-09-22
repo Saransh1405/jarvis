@@ -1,5 +1,7 @@
-from jarvis_ai.memory.store import MemoryStore
+"""RAG ingestion + retrieval — Phase 3."""
 
-# TODO: Phase 3 - ingestion + retrieval pipeline.
+
 class RAGPipeline:
+    """Placeholder for document chunking, embedding, and multi-hop retrieval."""
+
     pass

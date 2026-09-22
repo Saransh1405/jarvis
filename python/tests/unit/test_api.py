@@ -5,16 +5,20 @@ from fastapi.testclient import TestClient
 
 from jarvis_ai.api.main import app
 
-client = TestClient(app)
+
+@pytest.fixture
+def client() -> TestClient:
+    with TestClient(app) as test_client:
+        yield test_client
 
 
-def test_health():
+def test_health(client: TestClient) -> None:
     resp = client.get("/health")
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
 
 
-def test_chat_stub():
+def test_chat_stub(client: TestClient) -> None:
     resp = client.post("/api/v1/chat", json={"message": "hello"})
     assert resp.status_code == 200
     data = resp.json()
@@ -24,7 +28,7 @@ def test_chat_stub():
     assert data["source"] == "llm"
 
 
-def test_chat_calculator_via_api():
+def test_chat_calculator_via_api(client: TestClient) -> None:
     resp = client.post("/api/v1/chat", json={"message": "what is 99 times 101?"})
     assert resp.status_code == 200
     data = resp.json()
@@ -33,7 +37,7 @@ def test_chat_calculator_via_api():
     assert data["source"] == "agent:calculator"
 
 
-def test_chat_stream_stub():
+def test_chat_stream_stub(client: TestClient) -> None:
     with client.stream("POST", "/api/v1/chat/stream", json={"message": "hi"}) as resp:
         assert resp.status_code == 200
         chunks = []

@@ -1,28 +1,54 @@
 import pytest
 
+from jarvis_ai.notes.memory import InMemoryNotesStore
 from jarvis_ai.tools import ToolNotFoundError, build_default_registry
+from jarvis_ai.tools.context import ToolContext
 
 
 def test_default_registry_has_builtin_tools() -> None:
     registry = build_default_registry()
     assert "calculator" in registry.names()
+    assert "get_note" in registry.names()
     assert "save_note" in registry.names()
 
 
-def test_registry_run_calculator() -> None:
+@pytest.mark.asyncio
+async def test_registry_run_calculator() -> None:
     registry = build_default_registry()
-    result = registry.run("calculator", {"expression": "2+2"})
+    ctx = ToolContext()
+    result = await registry.run("calculator", {"expression": "2+2"}, ctx)
     assert result == "4"
 
 
-def test_registry_unknown_tool() -> None:
+@pytest.mark.asyncio
+async def test_registry_unknown_tool() -> None:
     registry = build_default_registry()
     with pytest.raises(ToolNotFoundError):
-        registry.run("does_not_exist", {})
+        await registry.run("does_not_exist", {}, ToolContext())
 
 
 def test_registry_llm_schemas() -> None:
     registry = build_default_registry()
     schemas = registry.schemas_for_llm()
     names = {schema["function"]["name"] for schema in schemas}
-    assert names == {"calculator", "save_note"}
+    assert names == {
+        "calculator",
+        "get_note",
+        "list_reminders",
+        "save_note",
+        "search_memory",
+        "set_reminder",
+    }
+
+
+@pytest.mark.asyncio
+async def test_save_and_get_note_in_memory() -> None:
+    registry = build_default_registry()
+    store = InMemoryNotesStore()
+    ctx = ToolContext(user_id="user-test", notes=store)
+
+    saved = await registry.run("save_note", {"content": "buy milk"}, ctx)
+    assert saved.startswith("Saved note ")
+
+    listed = await registry.run("get_note", {}, ctx)
+    assert "buy milk" in listed

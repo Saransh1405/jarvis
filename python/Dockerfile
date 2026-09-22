@@ -8,7 +8,6 @@ ENV PIP_NO_CACHE_DIR=1 \
 
 COPY pyproject.toml ./
 COPY jarvis_ai ./jarvis_ai
-
 RUN pip install --prefix=/install .
 
 FROM python:3.12-slim-bookworm

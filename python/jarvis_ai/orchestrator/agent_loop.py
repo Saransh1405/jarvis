@@ -3,11 +3,12 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-from jarvis_ai.llm.agent_types import AgentTurn
+from jarvis_ai.llm.agent_types import AgentTurn, ToolCall
 from jarvis_ai.llm.base import LLMProvider
 from jarvis_ai.llm.messages import append_assistant_turn, append_tool_results, initial_messages
 from jarvis_ai.policy.decisions import PolicyDecision
 from jarvis_ai.policy.engine import PolicyEngine
+from jarvis_ai.tools.context import PendingActionsStore, ToolCallLogStore, ToolContext
 from jarvis_ai.tools.registry import ToolRegistry
 
 DEFAULT_MAX_TURNS = 5
@@ -17,6 +18,7 @@ DEFAULT_MAX_TURNS = 5
 class PendingAction:
     """A tool call blocked until the user confirms."""
 
+    action_id: str | None
     tool_call_id: str
     tool_name: str
     arguments: dict[str, Any]
@@ -35,32 +37,45 @@ def _policy_denied_message(tool_name: str) -> str:
     return f"Error: tool '{tool_name}' is not allowed by policy."
 
 
-def _needs_confirm_message(tool_name: str) -> str:
+def _needs_confirm_message(tool_name: str, action_id: str | None) -> str:
+    if action_id:
+        return (
+            f"I need your approval before I can run `{tool_name}`. "
+            f"Approve action `{action_id}` via POST /api/v1/actions/{action_id}/approve."
+        )
     return (
         f"I need your approval before I can run `{tool_name}`. "
-        "Reply with approve to continue once confirmation is supported."
+        "Authenticate so the action can be stored for approval."
     )
 
 
-async def run_agent(
+async def _log_tool_call(
+    logger: ToolCallLogStore | None,
+    ctx: ToolContext,
+    tool_name: str,
+    arguments: dict[str, Any],
+    result: str,
+) -> None:
+    if logger is None:
+        return
+    await logger.log(ctx.user_id, tool_name, arguments, result)
+
+
+async def _agent_loop(
     llm: LLMProvider,
     registry: ToolRegistry,
-    user_message: str,
-    max_turns: int = DEFAULT_MAX_TURNS,
-    policy: PolicyEngine | None = None,
-    user_id: str | None = None,
+    messages: list[dict[str, Any]],
+    ctx: ToolContext,
+    tools_used: list[str],
+    max_turns: int,
+    policy: PolicyEngine,
+    pending_store: PendingActionsStore | None,
+    conversation_id: str | None,
+    tool_logger: ToolCallLogStore | None,
+    policy_override: set[str] | None = None,
 ) -> AgentResult:
-    """
-    Run the tool-calling agent loop.
-
-    1. Send user message + tool schemas to LLM
-    2. If LLM returns tool_calls → policy check → run via registry → send results back
-    3. Repeat until LLM returns final text or max_turns
-    """
-    engine = policy or PolicyEngine()
-    messages = initial_messages(user_message)
     tool_schemas = registry.schemas_for_llm()
-    tools_used: list[str] = []
+    override = policy_override or set()
 
     for _ in range(max_turns):
         turn: AgentTurn = await llm.agent_turn(messages, tool_schemas)
@@ -69,17 +84,33 @@ async def run_agent(
             append_assistant_turn(messages, turn)
             results: list[str] = []
             for call in turn.tool_calls:
-                decision = engine.evaluate(registry.get(call.name), call.name, user_id)
+                skip_policy = call.name in override
+                decision = (
+                    PolicyDecision.ALLOW
+                    if skip_policy
+                    else policy.evaluate(registry.get(call.name), call.name, ctx.user_id)
+                )
 
                 if decision == PolicyDecision.DENY:
                     results.append(_policy_denied_message(call.name))
                     continue
 
                 if decision == PolicyDecision.NEEDS_CONFIRM:
+                    action_id: str | None = None
+                    if pending_store is not None and ctx.user_id:
+                        action_id = await pending_store.create(
+                            user_id=ctx.user_id,
+                            tool_call_id=call.id,
+                            tool_name=call.name,
+                            arguments=call.arguments,
+                            messages=messages,
+                            conversation_id=conversation_id,
+                        )
                     return AgentResult(
-                        message=_needs_confirm_message(call.name),
+                        message=_needs_confirm_message(call.name, action_id),
                         tools_used=tools_used,
                         pending_action=PendingAction(
+                            action_id=action_id,
                             tool_call_id=call.id,
                             tool_name=call.name,
                             arguments=call.arguments,
@@ -87,7 +118,9 @@ async def run_agent(
                     )
 
                 tools_used.append(call.name)
-                results.append(registry.run(call.name, call.arguments))
+                result = await registry.run(call.name, call.arguments, ctx)
+                await _log_tool_call(tool_logger, ctx, call.name, call.arguments, result)
+                results.append(result)
 
             append_tool_results(messages, turn.tool_calls, results)
             continue
@@ -98,4 +131,76 @@ async def run_agent(
     return AgentResult(
         message="I could not complete that request.",
         tools_used=tools_used,
+    )
+
+
+async def run_agent(
+    llm: LLMProvider,
+    registry: ToolRegistry,
+    user_message: str,
+    max_turns: int = DEFAULT_MAX_TURNS,
+    policy: PolicyEngine | None = None,
+    user_id: str | None = None,
+    tool_ctx: ToolContext | None = None,
+    system_prompt: str | None = None,
+    conversation_id: str | None = None,
+    pending_store: PendingActionsStore | None = None,
+    tool_logger: ToolCallLogStore | None = None,
+) -> AgentResult:
+    """Run the tool-calling agent loop from a new user message."""
+    engine = policy or PolicyEngine()
+    ctx = tool_ctx or ToolContext(user_id=user_id)
+    if user_id and ctx.user_id is None:
+        ctx = ToolContext(
+            user_id=user_id,
+            notes=ctx.notes,
+            reminders=ctx.reminders,
+            memory=ctx.memory,
+        )
+    messages = initial_messages(user_message, system=system_prompt)
+    tools_used: list[str] = []
+    return await _agent_loop(
+        llm,
+        registry,
+        messages,
+        ctx,
+        tools_used,
+        max_turns,
+        engine,
+        pending_store,
+        conversation_id,
+        tool_logger,
+    )
+
+
+async def resume_agent_after_approval(
+    llm: LLMProvider,
+    registry: ToolRegistry,
+    messages: list[dict[str, Any]],
+    approved_call: ToolCall,
+    ctx: ToolContext,
+    max_turns: int = DEFAULT_MAX_TURNS,
+    policy: PolicyEngine | None = None,
+    pending_store: PendingActionsStore | None = None,
+    conversation_id: str | None = None,
+    tool_logger: ToolCallLogStore | None = None,
+) -> AgentResult:
+    """Continue the agent loop after a confirm-required tool was approved."""
+    engine = policy or PolicyEngine()
+    tools_used = [approved_call.name]
+    result = await registry.run(approved_call.name, approved_call.arguments, ctx)
+    await _log_tool_call(tool_logger, ctx, approved_call.name, approved_call.arguments, result)
+    append_tool_results(messages, [approved_call], [result])
+    return await _agent_loop(
+        llm,
+        registry,
+        messages,
+        ctx,
+        tools_used,
+        max_turns,
+        engine,
+        pending_store,
+        conversation_id,
+        tool_logger,
+        policy_override={approved_call.name},
     )

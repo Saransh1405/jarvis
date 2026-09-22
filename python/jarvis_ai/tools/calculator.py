@@ -6,6 +6,7 @@ from typing import Any
 
 from jarvis_ai.policy.policy import Tier
 from jarvis_ai.tools.base import Tool
+from jarvis_ai.tools.context import ToolContext
 
 _BINARY_OPS: dict[type[ast.operator], Any] = {
     ast.Add: operator.add,
@@ -77,7 +78,8 @@ def _eval_node(node: ast.AST) -> float:
     raise CalculatorError(f"unsupported syntax: {type(node).__name__}")
 
 
-def _run_calculator(args: dict[str, Any]) -> str:
+def _run_calculator(args: dict[str, Any], ctx: ToolContext) -> str:
+    _ = ctx
     expression = args.get("expression")
     if not isinstance(expression, str) or not expression.strip():
         return "Error: 'expression' must be a non-empty string"

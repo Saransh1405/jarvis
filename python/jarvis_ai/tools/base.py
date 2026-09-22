@@ -1,12 +1,14 @@
 """Tool interface shared by all JARVIS tools."""
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
 from jarvis_ai.policy.policy import Tier
+from jarvis_ai.tools.context import ToolContext
 
-ToolHandler = Callable[[dict[str, Any]], str]
+SyncToolHandler = Callable[[dict[str, Any], ToolContext], str]
+AsyncToolHandler = Callable[[dict[str, Any], ToolContext], Awaitable[str]]
 
 
 @dataclass(frozen=True)
@@ -17,7 +19,15 @@ class Tool:
     description: str
     tier: Tier
     parameters: dict[str, Any]
-    run: ToolHandler
+    run: SyncToolHandler | None = None
+    async_run: AsyncToolHandler | None = None
+
+    async def execute(self, args: dict[str, Any], ctx: ToolContext) -> str:
+        if self.async_run is not None:
+            return await self.async_run(args, ctx)
+        if self.run is not None:
+            return self.run(args, ctx)
+        raise RuntimeError(f"tool {self.name} has no handler")
 
     def to_openai_schema(self) -> dict[str, Any]:
         """JSON schema shape for OpenAI tool-calling."""

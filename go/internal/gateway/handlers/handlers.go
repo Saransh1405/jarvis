@@ -36,5 +36,11 @@ func RegisterRoutes(engine *gin.Engine, cfg *config.Config, redisClient *redis.C
 		api.POST("/chat/stream", func(c *gin.Context) {
 			chatProxy.ForwardStream(c, "/api/v1/chat/stream")
 		})
+		api.POST("/actions/:id/approve", func(c *gin.Context) {
+			chatProxy.Forward(c, "/api/v1/actions/"+c.Param("id")+"/approve")
+		})
+		api.POST("/actions/:id/reject", func(c *gin.Context) {
+			chatProxy.Forward(c, "/api/v1/actions/"+c.Param("id")+"/reject")
+		})
 	}
 }

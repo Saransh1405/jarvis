@@ -4,6 +4,10 @@ from jarvis_ai.llm.agent_types import AgentTurn, ToolCall
 from jarvis_ai.llm.stub import StubLLMProvider
 from jarvis_ai.orchestrator.agent_loop import run_agent
 from tests.conftest import ScriptedLLM
+from jarvis_ai.actions.memory import InMemoryPendingActionsStore
+from jarvis_ai.memory.store import InMemoryMemoryStore
+from jarvis_ai.notes.memory import InMemoryNotesStore
+from jarvis_ai.reminders.memory import InMemoryRemindersStore
 from jarvis_ai.orchestrator.orchestrator import Orchestrator
 from jarvis_ai.orchestrator.routing import try_extract_calculator_expression
 from jarvis_ai.tools import build_default_registry
@@ -50,7 +54,14 @@ async def test_agent_loop_calls_calculator_then_answers() -> None:
 
 @pytest.mark.asyncio
 async def test_orchestrator_llm_picks_calculator_for_natural_language() -> None:
-    orch = Orchestrator(llm=StubLLMProvider(), tools=build_default_registry())
+    orch = Orchestrator(
+        llm=StubLLMProvider(),
+        tools=build_default_registry(),
+        notes=InMemoryNotesStore(),
+        reminders=InMemoryRemindersStore(),
+        memory=InMemoryMemoryStore(),
+        pending_actions=InMemoryPendingActionsStore(),
+    )
     result = await orch.chat("what is 99 times 101?", None)
     assert "9999" in result["message"]
     assert result["tools_used"] == ["calculator"]
@@ -59,7 +70,14 @@ async def test_orchestrator_llm_picks_calculator_for_natural_language() -> None:
 
 @pytest.mark.asyncio
 async def test_orchestrator_explicit_calculate_still_works() -> None:
-    orch = Orchestrator(llm=StubLLMProvider(), tools=build_default_registry())
+    orch = Orchestrator(
+        llm=StubLLMProvider(),
+        tools=build_default_registry(),
+        notes=InMemoryNotesStore(),
+        reminders=InMemoryRemindersStore(),
+        memory=InMemoryMemoryStore(),
+        pending_actions=InMemoryPendingActionsStore(),
+    )
     result = await orch.chat("calculate 99*101", None)
     assert "9999" in result["message"]
     assert result["tools_used"] == ["calculator"]
@@ -67,7 +85,14 @@ async def test_orchestrator_explicit_calculate_still_works() -> None:
 
 @pytest.mark.asyncio
 async def test_orchestrator_falls_back_to_llm() -> None:
-    orch = Orchestrator(llm=StubLLMProvider(), tools=build_default_registry())
+    orch = Orchestrator(
+        llm=StubLLMProvider(),
+        tools=build_default_registry(),
+        notes=InMemoryNotesStore(),
+        reminders=InMemoryRemindersStore(),
+        memory=InMemoryMemoryStore(),
+        pending_actions=InMemoryPendingActionsStore(),
+    )
     result = await orch.chat("hello", None)
     assert result["message"] == "Echo: hello"
     assert result["source"] == "llm"
@@ -89,9 +114,15 @@ async def test_orchestrator_blocks_save_note_pending_confirmation() -> None:
             ),
         ]
     )
-    orch = Orchestrator(llm=llm, tools=build_default_registry())
-    result = await orch.chat("save a note: buy milk", None)
+    orch = Orchestrator(
+        llm=llm,
+        tools=build_default_registry(),
+        notes=InMemoryNotesStore(),
+        pending_actions=InMemoryPendingActionsStore(),
+    )
+    result = await orch.chat("save a note: buy milk", None, user_id="user-1")
     assert result["pending_action"]["tool_name"] == "save_note"
+    assert result["pending_action"]["action_id"]
     assert result["source"] == "policy:pending:save_note"
     assert result["tools_used"] is None
 
@@ -100,7 +131,14 @@ async def test_orchestrator_blocks_save_note_pending_confirmation() -> None:
 async def test_orchestrator_stream_after_agent_loop() -> None:
     import json
 
-    orch = Orchestrator(llm=StubLLMProvider(), tools=build_default_registry())
+    orch = Orchestrator(
+        llm=StubLLMProvider(),
+        tools=build_default_registry(),
+        notes=InMemoryNotesStore(),
+        reminders=InMemoryRemindersStore(),
+        memory=InMemoryMemoryStore(),
+        pending_actions=InMemoryPendingActionsStore(),
+    )
     payloads: list[str] = []
     async for payload in orch.stream_chat("calc 2+2"):
         payloads.append(payload)

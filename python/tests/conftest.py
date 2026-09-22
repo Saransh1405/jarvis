@@ -7,6 +7,9 @@ from jarvis_ai.llm.stub import StubLLMProvider
 
 os.environ.setdefault("LLM_PROVIDER", "stub")
 os.environ.setdefault("LLM_MODEL", "stub-model")
+# Unit tests use in-memory notes. Integration tests use JARVIS_TEST_DATABASE_URL.
+os.environ["DATABASE_URL"] = ""
+os.environ["POSTGRES_DSN"] = ""
 
 
 class ScriptedLLM(StubLLMProvider):
@@ -21,3 +24,7 @@ class ScriptedLLM(StubLLMProvider):
         turn = self._turns[self._index]
         self._index += 1
         return turn
+
+
+def pytest_configure(config) -> None:
+    config.addinivalue_line("markers", "integration: tests that need a live DATABASE_URL")
