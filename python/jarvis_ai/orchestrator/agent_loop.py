@@ -106,8 +106,9 @@ async def _agent_loop(
                             messages=messages,
                             conversation_id=conversation_id,
                         )
+                    confirm_msg = _needs_confirm_message(call.name, action_id)
                     return AgentResult(
-                        message=_needs_confirm_message(call.name, action_id),
+                        message=confirm_msg,
                         tools_used=tools_used,
                         pending_action=PendingAction(
                             action_id=action_id,
@@ -126,11 +127,49 @@ async def _agent_loop(
             continue
 
         if turn.text is not None:
+            messages.append({"role": "assistant", "content": turn.text})
             return AgentResult(message=turn.text, tools_used=tools_used)
 
     return AgentResult(
         message="I could not complete that request.",
         tools_used=tools_used,
+    )
+
+
+async def run_agent_with_messages(
+    llm: LLMProvider,
+    registry: ToolRegistry,
+    messages: list[dict[str, Any]],
+    max_turns: int = DEFAULT_MAX_TURNS,
+    policy: PolicyEngine | None = None,
+    user_id: str | None = None,
+    tool_ctx: ToolContext | None = None,
+    conversation_id: str | None = None,
+    pending_store: PendingActionsStore | None = None,
+    tool_logger: ToolCallLogStore | None = None,
+) -> AgentResult:
+    """Run the tool-calling loop from an existing message list (includes system + history)."""
+    engine = policy or PolicyEngine()
+    ctx = tool_ctx or ToolContext(user_id=user_id)
+    if user_id and ctx.user_id is None:
+        ctx = ToolContext(
+            user_id=user_id,
+            notes=ctx.notes,
+            reminders=ctx.reminders,
+            memory=ctx.memory,
+        )
+    tools_used: list[str] = []
+    return await _agent_loop(
+        llm,
+        registry,
+        messages,
+        ctx,
+        tools_used,
+        max_turns,
+        engine,
+        pending_store,
+        conversation_id,
+        tool_logger,
     )
 
 

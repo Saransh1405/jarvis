@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from jarvis_ai.actions.memory import InMemoryPendingActionsStore
 from jarvis_ai.actions.repository import PendingActionsRepository
 from jarvis_ai.config.settings import Settings
+from jarvis_ai.conversations import ConversationsRepository, InMemoryConversationsStore
 from jarvis_ai.db import create_pool, run_migrations
 from jarvis_ai.memory.store import InMemoryMemoryStore, PostgresMemoryStore
 from jarvis_ai.notes.memory import InMemoryNotesStore
@@ -34,12 +35,14 @@ async def lifespan(app: FastAPI):
         reminders = RemindersRepository(pool)
         memory = PostgresMemoryStore(pool)
         tool_logger = ToolCallLogger(pool)
+        conversations = ConversationsRepository(pool)
     else:
         notes = InMemoryNotesStore()
         pending = InMemoryPendingActionsStore()
         reminders = InMemoryRemindersStore()
         memory = InMemoryMemoryStore()
         tool_logger = NoOpToolCallLogger()
+        conversations = None
 
     app.state.db_pool = pool
     app.state.orchestrator = Orchestrator(
@@ -49,6 +52,7 @@ async def lifespan(app: FastAPI):
         memory=memory,
         pending_actions=pending,
         tool_logger=tool_logger,
+        conversations=conversations,
     )
     yield
     if pool is not None:
@@ -127,13 +131,64 @@ async def ready() -> dict:
     }
 
 
+def require_user_id(x_user_id: str | None) -> str:
+    pool = getattr(app.state, "db_pool", None)
+    if pool is None:
+        return x_user_id or ""
+    if not x_user_id:
+        raise HTTPException(status_code=401, detail="user_id required")
+    return x_user_id
+
+
+class ConversationSummary(BaseModel):
+    id: str
+    title: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class MessageItem(BaseModel):
+    id: str
+    role: str
+    content: str
+    metadata: dict
+    created_at: str
+
+
+@app.get("/api/v1/conversations", response_model=list[ConversationSummary])
+async def list_conversations(
+    x_user_id: str | None = Header(default=None, alias="X-User-ID"),
+) -> list[ConversationSummary]:
+    user_id = require_user_id(x_user_id)
+    orchestrator = get_orchestrator()
+    items = await orchestrator.list_conversations_for_user(user_id)
+    return [ConversationSummary(**item) for item in items]
+
+
+@app.get("/api/v1/conversations/{conversation_id}/messages", response_model=list[MessageItem])
+async def list_conversation_messages(
+    conversation_id: str,
+    x_user_id: str | None = Header(default=None, alias="X-User-ID"),
+) -> list[MessageItem]:
+    user_id = require_user_id(x_user_id)
+    orchestrator = get_orchestrator()
+    rows = await orchestrator.list_messages_for_user(user_id, conversation_id)
+    if rows is None:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    return [MessageItem(**row) for row in rows]
+
+
 @app.post("/api/v1/chat", response_model=ChatResponse)
 async def chat(
     req: ChatRequest,
     x_user_id: str | None = Header(default=None, alias="X-User-ID"),
 ) -> ChatResponse:
+    user_id = require_user_id(x_user_id) if getattr(app.state, "db_pool", None) else x_user_id
     orchestrator = get_orchestrator()
-    result = await orchestrator.chat(req.message, req.conversation_id, user_id=x_user_id)
+    result = await orchestrator.chat(req.message, req.conversation_id, user_id=user_id or None)
+    status_code = result.pop("status_code", None)
+    if status_code:
+        raise HTTPException(status_code=status_code, detail=result.get("error", "error"))
     return ChatResponse(**result)
 
 
@@ -142,11 +197,12 @@ async def chat_stream(
     req: ChatRequest,
     x_user_id: str | None = Header(default=None, alias="X-User-ID"),
 ) -> StreamingResponse:
+    user_id = require_user_id(x_user_id) if getattr(app.state, "db_pool", None) else x_user_id
     orchestrator = get_orchestrator()
 
     async def event_generator() -> AsyncIterator[str]:
         async for payload in orchestrator.stream_chat(
-            req.message, req.conversation_id, user_id=x_user_id
+            req.message, req.conversation_id, user_id=user_id or None
         ):
             yield f"data: {payload}\n\n"
 
@@ -158,8 +214,9 @@ async def approve_action(
     action_id: str,
     x_user_id: str | None = Header(default=None, alias="X-User-ID"),
 ) -> ChatResponse:
+    user_id = require_user_id(x_user_id) if getattr(app.state, "db_pool", None) else x_user_id
     orchestrator = get_orchestrator()
-    result = await orchestrator.approve_action(action_id, x_user_id)
+    result = await orchestrator.approve_action(action_id, user_id or None)
     status_code = result.pop("status_code", None)
     if status_code:
         raise HTTPException(status_code=status_code, detail=result.get("error", "error"))
@@ -179,8 +236,9 @@ async def reject_action(
     action_id: str,
     x_user_id: str | None = Header(default=None, alias="X-User-ID"),
 ) -> ActionStatusResponse:
+    user_id = require_user_id(x_user_id) if getattr(app.state, "db_pool", None) else x_user_id
     orchestrator = get_orchestrator()
-    result = await orchestrator.reject_action(action_id, x_user_id)
+    result = await orchestrator.reject_action(action_id, user_id or None)
     status_code = result.pop("status_code", None)
     if status_code:
         raise HTTPException(status_code=status_code, detail=result.get("error", "error"))

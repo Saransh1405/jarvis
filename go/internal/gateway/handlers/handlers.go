@@ -50,5 +50,11 @@ func RegisterRoutes(
 		api.POST("/actions/:id/reject", func(c *gin.Context) {
 			chatProxy.Forward(c, "/api/v1/actions/"+c.Param("id")+"/reject")
 		})
+		api.GET("/conversations", func(c *gin.Context) {
+			chatProxy.Forward(c, "/api/v1/conversations")
+		})
+		api.GET("/conversations/:id/messages", func(c *gin.Context) {
+			chatProxy.Forward(c, "/api/v1/conversations/"+c.Param("id")+"/messages")
+		})
 	}
 }

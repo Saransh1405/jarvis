@@ -1,7 +1,9 @@
 import json
 from collections.abc import AsyncIterator
+from typing import Any, Protocol
 
 from jarvis_ai.config.settings import Settings
+from jarvis_ai.conversations.history import llm_message_to_stored, stored_messages_to_llm
 from jarvis_ai.llm.agent_types import ToolCall
 from jarvis_ai.llm.base import DEFAULT_SYSTEM_PROMPT, LLMProvider
 from jarvis_ai.llm.factory import create_llm_provider
@@ -9,6 +11,7 @@ from jarvis_ai.orchestrator.agent_loop import (
     PendingAction,
     resume_agent_after_approval,
     run_agent,
+    run_agent_with_messages,
 )
 from jarvis_ai.policy.engine import PolicyEngine
 from jarvis_ai.tools.context import (
@@ -20,6 +23,29 @@ from jarvis_ai.tools.context import (
     ToolContext,
 )
 from jarvis_ai.tools.registry import ToolRegistry, build_default_registry
+
+HISTORY_MESSAGE_LIMIT = 40
+
+
+class ConversationsStore(Protocol):
+    async def create_conversation(self, user_id: str) -> str: ...
+
+    async def get_conversation(self, user_id: str, conversation_id: str) -> Any | None: ...
+
+    async def append_message(
+        self,
+        user_id: str,
+        conversation_id: str,
+        role: str,
+        content: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> None: ...
+
+    async def list_messages(
+        self, user_id: str, conversation_id: str, limit: int = 100
+    ) -> list[Any]: ...
+
+    async def list_conversations(self, user_id: str, limit: int = 20) -> list[Any]: ...
 
 
 class Orchestrator:
@@ -36,6 +62,7 @@ class Orchestrator:
         memory: MemoryStore | None = None,
         pending_actions: PendingActionsStore | None = None,
         tool_logger: ToolCallLogStore | None = None,
+        conversations: ConversationsStore | None = None,
     ) -> None:
         self._settings = settings or Settings()
         self._llm = llm or create_llm_provider(self._settings)
@@ -46,6 +73,7 @@ class Orchestrator:
         self._memory = memory
         self._pending_actions = pending_actions
         self._tool_logger = tool_logger
+        self._conversations = conversations
 
     @property
     def llm(self) -> LLMProvider:
@@ -55,8 +83,12 @@ class Orchestrator:
     def tools(self) -> ToolRegistry:
         return self._tools
 
-    def _conversation_id(self, conversation_id: str | None) -> str:
-        return conversation_id or "conv-stub"
+    @property
+    def conversations(self) -> ConversationsStore | None:
+        return self._conversations
+
+    def _uses_persistence(self) -> bool:
+        return self._conversations is not None
 
     def _tool_context(self, user_id: str | None) -> ToolContext:
         return ToolContext(
@@ -100,27 +132,90 @@ class Orchestrator:
             "arguments": pending.arguments,
         }
 
+    async def _persist_llm_slice(
+        self,
+        user_id: str,
+        conversation_id: str,
+        messages: list[dict[str, Any]],
+        start_index: int,
+    ) -> None:
+        if self._conversations is None:
+            return
+        for msg in messages[start_index:]:
+            role, content, metadata = llm_message_to_stored(msg)
+            if role not in ("user", "assistant", "tool"):
+                continue
+            await self._conversations.append_message(
+                user_id, conversation_id, role, content, metadata
+            )
+
     async def _run_chat_agent(
         self,
         message: str,
         conversation_id: str | None,
         user_id: str | None,
     ):
-        conv_id = self._conversation_id(conversation_id)
+        if not self._uses_persistence():
+            conv_id = conversation_id or "conv-stub"
+            system_prompt = await self._build_system_prompt(user_id, message)
+            result = await run_agent(
+                self._llm,
+                self._tools,
+                message,
+                policy=self._policy,
+                user_id=user_id,
+                tool_ctx=self._tool_context(user_id),
+                system_prompt=system_prompt,
+                conversation_id=conv_id,
+                pending_store=self._pending_actions,
+                tool_logger=self._tool_logger,
+            )
+            return conv_id, result
+
+        if not user_id:
+            raise ValueError("user_id required")
+
+        if conversation_id:
+            conv = await self._conversations.get_conversation(user_id, conversation_id)
+            if conv is None:
+                raise LookupError("conversation not found")
+            conv_id = conversation_id
+        else:
+            conv_id = await self._conversations.create_conversation(user_id)
+
+        history = await self._conversations.list_messages(
+            user_id, conv_id, limit=HISTORY_MESSAGE_LIMIT
+        )
         system_prompt = await self._build_system_prompt(user_id, message)
-        result = await run_agent(
+        llm_messages = stored_messages_to_llm(history, system_prompt)
+        await self._conversations.append_message(user_id, conv_id, "user", message)
+        llm_messages.append({"role": "user", "content": message})
+        agent_start = len(llm_messages)
+
+        result = await run_agent_with_messages(
             self._llm,
             self._tools,
-            message,
+            llm_messages,
             policy=self._policy,
             user_id=user_id,
             tool_ctx=self._tool_context(user_id),
-            system_prompt=system_prompt,
             conversation_id=conv_id,
             pending_store=self._pending_actions,
             tool_logger=self._tool_logger,
         )
+        await self._persist_llm_slice(user_id, conv_id, llm_messages, agent_start)
+        if result.pending_action is not None:
+            await self._conversations.append_message(
+                user_id, conv_id, "assistant", result.message
+            )
         return conv_id, result
+
+    def _chat_error_response(self, exc: Exception) -> dict:
+        if isinstance(exc, ValueError):
+            return {"error": str(exc), "status_code": 401}
+        if isinstance(exc, LookupError):
+            return {"error": str(exc), "status_code": 404}
+        raise exc
 
     async def chat(
         self,
@@ -128,7 +223,11 @@ class Orchestrator:
         conversation_id: str | None = None,
         user_id: str | None = None,
     ) -> dict:
-        conv_id, result = await self._run_chat_agent(message, conversation_id, user_id)
+        try:
+            conv_id, result = await self._run_chat_agent(message, conversation_id, user_id)
+        except (ValueError, LookupError) as exc:
+            return self._chat_error_response(exc)
+
         return {
             "message": result.message,
             "conversation_id": conv_id,
@@ -145,7 +244,12 @@ class Orchestrator:
         conversation_id: str | None = None,
         user_id: str | None = None,
     ) -> AsyncIterator[str]:
-        conv_id, result = await self._run_chat_agent(message, conversation_id, user_id)
+        try:
+            conv_id, result = await self._run_chat_agent(message, conversation_id, user_id)
+        except (ValueError, LookupError) as exc:
+            err = self._chat_error_response(exc)
+            yield json.dumps({"type": "error", "error": err["error"], "status_code": err["status_code"]})
+            return
 
         if result.pending_action is not None:
             yield json.dumps(
@@ -188,10 +292,12 @@ class Orchestrator:
             name=record.tool_name,
             arguments=record.arguments,
         )
+        messages = list(record.messages)
+        resume_start = len(messages)
         result = await resume_agent_after_approval(
             self._llm,
             self._tools,
-            list(record.messages),
+            messages,
             approved_call,
             self._tool_context(user_id),
             policy=self._policy,
@@ -201,9 +307,13 @@ class Orchestrator:
         )
         await self._pending_actions.set_status(action_id, user_id, "executed")
 
+        conv_id = record.conversation_id or "conv-stub"
+        if self._conversations is not None and record.conversation_id:
+            await self._persist_llm_slice(user_id, record.conversation_id, messages, resume_start)
+
         return {
             "message": result.message,
-            "conversation_id": record.conversation_id or "conv-stub",
+            "conversation_id": conv_id,
             "provider": self._llm.name,
             "model": self._llm.model,
             "source": self._source_label(result.tools_used, None),
@@ -230,3 +340,37 @@ class Orchestrator:
             "status": "rejected",
             "message": f"Cancelled `{record.tool_name}`.",
         }
+
+    async def list_conversations_for_user(self, user_id: str, limit: int = 20) -> list[dict]:
+        if self._conversations is None:
+            return []
+        convs = await self._conversations.list_conversations(user_id, limit=limit)
+        return [
+            {
+                "id": c.id,
+                "title": c.title,
+                "created_at": c.created_at.isoformat(),
+                "updated_at": c.updated_at.isoformat(),
+            }
+            for c in convs
+        ]
+
+    async def list_messages_for_user(
+        self, user_id: str, conversation_id: str, limit: int = 100
+    ) -> list[dict] | None:
+        if self._conversations is None:
+            return None
+        conv = await self._conversations.get_conversation(user_id, conversation_id)
+        if conv is None:
+            return None
+        rows = await self._conversations.list_messages(user_id, conversation_id, limit=limit)
+        return [
+            {
+                "id": m.id,
+                "role": m.role,
+                "content": m.content,
+                "metadata": m.metadata,
+                "created_at": m.created_at.isoformat(),
+            }
+            for m in rows
+        ]
