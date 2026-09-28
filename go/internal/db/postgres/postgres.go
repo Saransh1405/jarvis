@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -50,4 +51,9 @@ func (p *Pool) Close() {
 func (p *Pool) Exec(ctx context.Context, sql string, args ...any) error {
 	_, err := p.pool.Exec(ctx, sql, args...)
 	return err
+}
+
+// QueryRow runs a query expected to return at most one row.
+func (p *Pool) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	return p.pool.QueryRow(ctx, sql, args...)
 }

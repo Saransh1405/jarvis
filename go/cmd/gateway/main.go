@@ -11,6 +11,7 @@ import (
 	"jarvis-go/internal/gateway/audit"
 	"jarvis-go/internal/gateway/config"
 	"jarvis-go/internal/gateway/server"
+	"jarvis-go/internal/gateway/users"
 )
 
 func main() {
@@ -45,19 +46,35 @@ func main() {
 		}()
 	}
 
+	var userStore users.Store
 	var auditRecorder audit.Recorder = audit.NopRecorder{}
-	if cfg.AuditLogEnabled {
+
+	if cfg.PostgresDSN != "" {
 		pgPool, err := postgres.Connect(ctx, cfg.PostgresDSN)
 		if err != nil {
-			logger.Error("audit log enabled but postgres unavailable", "error", err)
-			os.Exit(1)
+			if cfg.AuthRequiresDB {
+				logger.Error("postgres required for auth but unavailable", "error", err)
+				os.Exit(1)
+			}
+			logger.Warn("postgres unavailable, dev auth only", "error", err)
+		} else {
+			defer pgPool.Close()
+			userStore = users.NewRepository(pgPool)
+			logger.Info("database auth enabled")
+			if cfg.AuditLogEnabled {
+				auditRecorder = audit.NewPostgresRecorder(pgPool, logger)
+				logger.Info("request audit logging enabled")
+			}
 		}
-		defer pgPool.Close()
-		auditRecorder = audit.NewPostgresRecorder(pgPool, logger)
-		logger.Info("request audit logging enabled")
+	} else if cfg.AuthRequiresDB {
+		logger.Error("GATEWAY_AUTH_REQUIRES_DB is true but POSTGRES_DSN is empty")
+		os.Exit(1)
 	}
 
-	srv, err := server.New(cfg, logger, redisClient, server.Options{AuditRecorder: auditRecorder})
+	srv, err := server.New(cfg, logger, redisClient, server.Options{
+		AuditRecorder: auditRecorder,
+		Users:         userStore,
+	})
 	if err != nil {
 		logger.Error("server init failed", "error", err)
 		os.Exit(1)

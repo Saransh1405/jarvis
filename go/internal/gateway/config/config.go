@@ -32,6 +32,8 @@ type Config struct {
 	DevAuthRoles       []string
 	DevAuthPermissions []string
 
+	AuthRequiresDB bool
+
 	CORSAllowedOrigins []string
 	CORSAllowedMethods []string
 	CORSAllowedHeaders []string
@@ -114,6 +116,7 @@ func Load() (*Config, error) {
 		DevAuthUserID:       envString("GATEWAY_DEV_AUTH_USER_ID", "user-dev-1"),
 		DevAuthRoles:        envCSVWithDefault("GATEWAY_DEV_AUTH_ROLES", []string{"user"}),
 		DevAuthPermissions:  envCSVWithDefault("GATEWAY_DEV_AUTH_PERMISSIONS", []string{"chat:read", "chat:write"}),
+		AuthRequiresDB:      envBool("GATEWAY_AUTH_REQUIRES_DB", true),
 		CORSAllowedOrigins:  envCSVWithDefault("GATEWAY_CORS_ORIGINS", []string{"*"}),
 		CORSAllowedMethods:  envCSVWithDefault("GATEWAY_CORS_METHODS", []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}),
 		CORSAllowedHeaders:  envCSVWithDefault("GATEWAY_CORS_HEADERS", []string{"Authorization", "Content-Type", "X-Request-ID", "X-API-Key"}),
@@ -126,7 +129,7 @@ func Load() (*Config, error) {
 		TracingEnabled:      envBool("GATEWAY_TRACING_ENABLED", true),
 		ServiceName:         envString("GATEWAY_SERVICE_NAME", "jarvis-gateway"),
 		PublicPaths: envCSVWithDefault("GATEWAY_PUBLIC_PATHS", []string{
-			"/health", "/ready", "/live", "/api/v1/auth/login",
+			"/health", "/ready", "/live", "/api/v1/auth/login", "/api/v1/auth/signup",
 		}),
 		AuditLogEnabled: envBool("GATEWAY_AUDIT_LOG_ENABLED", false),
 	}
