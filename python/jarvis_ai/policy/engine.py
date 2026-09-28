@@ -13,6 +13,7 @@ class PolicyEngine:
     - SAFE: run immediately
     - CONFIRM_REQUIRED / ALWAYS_CONFIRM: block until user approves (Phase 2.7)
     - unknown tool: deny
+    - confirm-tier tools require a user_id (no anonymous writes)
     """
 
     def evaluate(
@@ -21,8 +22,6 @@ class PolicyEngine:
         tool_name: str,
         user_id: str | None = None,
     ) -> PolicyDecision:
-        _ = user_id  # reserved for per-user overrides in a later phase
-
         if tool is None:
             return PolicyDecision.DENY
 
@@ -30,6 +29,8 @@ class PolicyEngine:
             return PolicyDecision.ALLOW
 
         if tool.tier in (Tier.CONFIRM_REQUIRED, Tier.ALWAYS_CONFIRM):
+            if not user_id:
+                return PolicyDecision.DENY
             return PolicyDecision.NEEDS_CONFIRM
 
         return PolicyDecision.DENY

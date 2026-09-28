@@ -1,5 +1,6 @@
 import pytest
 
+from jarvis_ai.policy.policy import Tier
 from jarvis_ai.notes.memory import InMemoryNotesStore
 from jarvis_ai.tools import ToolNotFoundError, build_default_registry
 from jarvis_ai.tools.context import ToolContext
@@ -39,6 +40,25 @@ def test_registry_llm_schemas() -> None:
         "search_memory",
         "set_reminder",
     }
+
+
+EXPECTED_TOOL_TIERS: dict[str, Tier] = {
+    "calculator": Tier.SAFE,
+    "get_note": Tier.SAFE,
+    "list_reminders": Tier.SAFE,
+    "search_memory": Tier.SAFE,
+    "save_note": Tier.CONFIRM_REQUIRED,
+    "set_reminder": Tier.CONFIRM_REQUIRED,
+}
+
+
+def test_default_registry_tiers_match_v2() -> None:
+    registry = build_default_registry()
+    for name, expected_tier in EXPECTED_TOOL_TIERS.items():
+        tool = registry.get(name)
+        assert tool is not None, name
+        assert tool.tier == expected_tier, name
+    assert set(registry.names()) == set(EXPECTED_TOOL_TIERS.keys())
 
 
 @pytest.mark.asyncio

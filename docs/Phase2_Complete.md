@@ -1,32 +1,31 @@
-# Phase 2 — Complete
+# Phase 2 — progress (Roadmap v2)
 
-All Phase 2 sub-phases (2.1–2.9) are implemented in this repository.
+Phase 2 is delivered in steps: auth (Step 1), chat persistence (Step 2), tools/policy/audit (Step 3), memory polish (Step 4).
 
 ## Delivered
 
-| Sub-phase | Feature |
-|-----------|---------|
-| 2.2–2.4 | Tools + agent loop + LLM tool calling |
-| 2.5 | Policy engine (`safe`, `confirm_required`, `deny`) |
-| 2.6 | Notes in Postgres (`save_note`, `get_note`) |
-| 2.7 | Pending actions + approve/reject API + agent resume |
-| 2.8 | Reminders (`set_reminder`, `list_reminders`, due surfacing) |
-| 2.9 | Long-term memory (Postgres `memory_facts`, `search_memory` tool) |
+| Area | Feature |
+|------|---------|
+| Tools + agent loop | LLM tool calling, starter tools |
+| Policy | `safe`, `confirm_required`; confirm requires `user_id` |
+| Notes / reminders / memory | Postgres-backed, per-user |
+| Pending actions | Approve/reject API + agent resume |
+| Audit | `tool_call_logs` with `user_id` on executed tools |
+| Conversations | Per-user threads in Postgres (Step 2) |
 
-Also: `tool_call_logs` audit table, gateway proxies for action endpoints, GitHub Actions CI.
+## Confirm flow (API only until Phase 4)
 
-## Try confirm flow
+ConfirmRequired tools stop the agent and return `pending_action`. The user approves via:
 
-```bash
-# 1. Login via gateway, get token
-# 2. Chat with save_note intent (use real LLM or scripted tests)
-# 3. POST /api/v1/actions/{action_id}/approve with same user JWT
-```
+- `POST /api/v1/actions/{action_id}/approve`
+- `POST /api/v1/actions/{action_id}/reject`
+
+Phase 4 (calendar/email) adds OAuth integrations and a **plain Yes/No** prompt in the Reach channel UI — not a separate generic confirm endpoint.
 
 ## Memory note
 
-Phase 2.9 uses **Postgres-backed memory** (not Graphiti/Neo4j yet). That matches the roadmap demo (“what did I tell you last week?”) with less ops. Graphiti can replace `PostgresMemoryStore` in a later iteration.
+Postgres-backed memory (not Graphiti/Neo4j yet). Graphiti remains optional for Phase 5 “what I know about you” UI.
 
-## Next
+## Tool audit verification
 
-See **`docs/Phase3_Getting_Started.md`**.
+See [`docs/Step3_tool_audit_verification.md`](Step3_tool_audit_verification.md).

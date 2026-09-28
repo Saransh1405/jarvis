@@ -96,20 +96,19 @@ Set `DATABASE_URL` (Neon or local) for durable notes, reminders, memory, pending
 - `POST /api/v1/actions/{action_id}/approve` — runs tool and continues agent loop.
 - `POST /api/v1/actions/{action_id}/reject` — cancels pending action.
 
-### Tools (Phase 2)
+### Tools (Phase 2) — policy tiers (Roadmap v2)
 
-| Tool | Tier | Notes |
-|------|------|--------|
-| `calculator` | safe | AST math |
-| `get_note` | safe | Postgres / in-memory |
-| `save_note` | confirm | Also writes to memory index |
-| `set_reminder` | confirm | ISO `due_at` |
-| `list_reminders` | safe | |
-| `search_memory` | safe | Long-term facts in Postgres |
+| Tool | Tier | v2 behavior |
+|------|------|-------------|
+| `calculator` | Safe | Auto-run |
+| `get_note`, `list_reminders`, `search_memory` | Safe | Read-only; scoped by `user_id` |
+| `save_note`, `set_reminder` | ConfirmRequired | Block until `POST /api/v1/actions/{id}/approve` (plain Yes/No UI in Phase 4 Reach) |
+
+Confirm-tier tools **require** an authenticated `user_id` (via gateway JWT → `X-User-ID`). Executed tools are recorded in `tool_call_logs` with that `user_id`.
 
 ### Data (Postgres migrations on API startup)
 
-- `notes`, `pending_actions`, `reminders`, `memory_facts`, `tool_call_logs`
+- `notes`, `pending_actions`, `reminders`, `memory_facts`, `tool_call_logs`, `conversations`, `messages`
 - Memory uses Postgres + `pg_trgm` (Graphiti/Neo4j optional upgrade later).
 
 ### Orchestrator behavior
@@ -118,11 +117,10 @@ Set `DATABASE_URL` (Neon or local) for durable notes, reminders, memory, pending
 2. Agent loop: LLM → policy → tools → repeat.
 3. Confirm-required tools create a `pending_actions` row and stop until approve.
 
-### Not in scope yet (Phase 3+)
+### Not in scope yet (Phase 3+ Reach / Phase 6 depth)
 
-- RAG / document upload (`jarvis_ai/rag/pipeline.py` stub)
-- Full conversation history in Postgres
-- Chat web UI
+- RAG / document upload (`jarvis_ai/rag/pipeline.py` — Phase 6 pilot-driven, not Phase 3 Reach)
+- Chat web UI (Phase 3 Reach)
 - MCP + OAuth integrations (Phase 4)
 
 ### Request path

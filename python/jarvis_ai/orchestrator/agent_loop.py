@@ -58,6 +58,8 @@ async def _log_tool_call(
 ) -> None:
     if logger is None:
         return
+    if not ctx.user_id:
+        return
     await logger.log(ctx.user_id, tool_name, arguments, result)
 
 
