@@ -1,13 +1,17 @@
 import json
+import re
 from collections.abc import AsyncIterator
 from typing import Any, Protocol
 
 from jarvis_ai.config.settings import Settings
 from jarvis_ai.conversations.history import llm_message_to_stored, stored_messages_to_llm
+from jarvis_ai.memory.extraction import extract_chat_facts
+from jarvis_ai.memory.helpers import store_extracted_facts
 from jarvis_ai.llm.agent_types import ToolCall
 from jarvis_ai.llm.base import DEFAULT_SYSTEM_PROMPT, LLMProvider
 from jarvis_ai.llm.factory import create_llm_provider
 from jarvis_ai.orchestrator.agent_loop import (
+    AgentResult,
     PendingAction,
     resume_agent_after_approval,
     run_agent,
@@ -25,6 +29,38 @@ from jarvis_ai.tools.context import (
 from jarvis_ai.tools.registry import ToolRegistry, build_default_registry
 
 HISTORY_MESSAGE_LIMIT = 40
+
+_MEMORY_STOP_WORDS = frozenset(
+    {
+        "what",
+        "when",
+        "where",
+        "which",
+        "about",
+        "did",
+        "you",
+        "tell",
+        "that",
+        "this",
+        "have",
+        "with",
+        "from",
+        "your",
+        "the",
+    }
+)
+
+
+def _memory_search_terms(user_message: str) -> list[str]:
+    terms: list[str] = []
+    stripped = user_message.strip()
+    if stripped:
+        terms.append(stripped)
+    for word in re.findall(r"[A-Za-z0-9']+", stripped):
+        lower = word.lower()
+        if len(word) >= 4 and lower not in _MEMORY_STOP_WORDS:
+            terms.append(word)
+    return terms
 
 
 class ConversationsStore(Protocol):
@@ -108,7 +144,17 @@ class Orchestrator:
                 sections.append("Due reminders for this user:\n" + "\n".join(lines))
 
         if user_id and self._memory is not None:
-            facts = await self._memory.search(user_id, user_message, limit=5)
+            facts = []
+            seen: set[str] = set()
+            for term in _memory_search_terms(user_message):
+                for fact in await self._memory.search(user_id, term, limit=5):
+                    if fact.id not in seen:
+                        seen.add(fact.id)
+                        facts.append(fact)
+                    if len(facts) >= 5:
+                        break
+                if len(facts) >= 5:
+                    break
             if facts:
                 lines = [f"- ({f.source}) {f.content}" for f in facts]
                 sections.append("Relevant long-term memory:\n" + "\n".join(lines))
@@ -148,6 +194,23 @@ class Orchestrator:
             await self._conversations.append_message(
                 user_id, conversation_id, role, content, metadata
             )
+
+    async def _capture_chat_memory(
+        self,
+        user_id: str | None,
+        user_message: str,
+        result: AgentResult,
+    ) -> None:
+        if not user_id or self._memory is None:
+            return
+        if result.pending_action is not None:
+            return
+        if "remember_fact" in (result.tools_used or []):
+            return
+        facts = extract_chat_facts(user_message, result.message)
+        if not facts:
+            return
+        await store_extracted_facts(self._memory, user_id, facts, source="chat")
 
     async def _run_chat_agent(
         self,
@@ -228,6 +291,8 @@ class Orchestrator:
         except (ValueError, LookupError) as exc:
             return self._chat_error_response(exc)
 
+        await self._capture_chat_memory(user_id, message, result)
+
         return {
             "message": result.message,
             "conversation_id": conv_id,
@@ -250,6 +315,8 @@ class Orchestrator:
             err = self._chat_error_response(exc)
             yield json.dumps({"type": "error", "error": err["error"], "status_code": err["status_code"]})
             return
+
+        await self._capture_chat_memory(user_id, message, result)
 
         if result.pending_action is not None:
             yield json.dumps(

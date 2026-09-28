@@ -1,31 +1,43 @@
-# Phase 2 — progress (Roadmap v2)
+# Phase 2 complete (Roadmap v2)
 
-Phase 2 is delivered in steps: auth (Step 1), chat persistence (Step 2), tools/policy/audit (Step 3), memory polish (Step 4).
+Phase 2 ships **multi-user persistence**: real auth, per-user chat history, tools with policy tiers, audit logs, and Postgres-backed long-term memory. Graphiti/Neo4j is **deferred** until Phase 5 (“what I know about you” UI); the `MemoryStore` interface stays swappable.
 
-## Delivered
+## v2 exit checklist
 
-| Area | Feature |
-|------|---------|
-| Tools + agent loop | LLM tool calling, starter tools |
-| Policy | `safe`, `confirm_required`; confirm requires `user_id` |
-| Notes / reminders / memory | Postgres-backed, per-user |
-| Pending actions | Approve/reject API + agent resume |
-| Audit | `tool_call_logs` with `user_id` on executed tools |
-| Conversations | Per-user threads in Postgres (Step 2) |
+| Criterion | Status |
+|-----------|--------|
+| Two accounts, separate conversations and memory | Auth + conversations + isolation tests |
+| Chat and memory survive restart | Postgres migrations + conversation/memory stores |
+| Tool calls logged per `user_id` | `tool_call_logs` + Step 3 tests |
+| “What did I tell you last week?” (private) | `remember_fact`, chat extraction, `search_memory`, prompt injection |
 
-## Confirm flow (API only until Phase 4)
+## What shipped (Steps 1–4)
 
-ConfirmRequired tools stop the agent and return `pending_action`. The user approves via:
+1. **Auth** — Gateway signup/login, JWT → `X-User-ID`
+2. **Conversations** — `conversations` / `messages`, history in agent loop
+3. **Tools & policy** — Tier table, confirm via API, isolation + audit tests
+4. **Memory** — `memory_facts`, `remember_fact`, rule-based chat extraction, deduped writes
 
-- `POST /api/v1/actions/{action_id}/approve`
-- `POST /api/v1/actions/{action_id}/reject`
+## Memory (Postgres, not Graphiti)
 
-Phase 4 (calendar/email) adds OAuth integrations and a **plain Yes/No** prompt in the Reach channel UI — not a separate generic confirm endpoint.
+- **Write:** `remember_fact` tool (Safe), chat extraction after each turn, `save_note` → memory index
+- **Read:** System prompt injection + `search_memory` tool
+- **Upgrade path:** Replace `PostgresMemoryStore` with Graphiti behind the same protocol in Phase 5+
 
-## Memory note
+## Confirm flow (until Phase 4 UI)
 
-Postgres-backed memory (not Graphiti/Neo4j yet). Graphiti remains optional for Phase 5 “what I know about you” UI.
+ConfirmRequired tools return `pending_action`. Approve with `POST /api/v1/actions/{id}/approve`. Phase 4 adds calendar/email OAuth and a plain **Yes/No** prompt in the Reach channel.
 
-## Tool audit verification
+## Demo script
 
-See [`docs/Step3_tool_audit_verification.md`](Step3_tool_audit_verification.md).
+1. Sign up users A and B; chat as each with distinct JWTs.
+2. User A: “My plumber is Raj, number 555-0100” (or `remember_fact`).
+3. Restart stack; User A new conversation: “What did I tell you about the plumber?” → Raj/number in context or tool result.
+4. User B asks the same → no leak.
+5. Optional: `SELECT * FROM tool_call_logs WHERE user_id = ...`
+
+## Next: Phase 3 Reach
+
+See [`docs/Phase3_Getting_Started.md`](Phase3_Getting_Started.md) and [`docs/JARVIS_Roadmap_v2.md`](JARVIS_Roadmap_v2.md).
+
+Tool audit notes: [`docs/Step3_tool_audit_verification.md`](Step3_tool_audit_verification.md).

@@ -1,8 +1,8 @@
 # JARVIS — specs
 
-Personal AI assistant. **Go** owns production edges (API gateway, auth, rate limits, proxy, future MCP server). **Python** owns the AI layer (orchestrator, LLM providers, tools, policy, notes/memory). Long-term plan: seven phases in `docs/JARVIS_Roadmap.md`.
+Personal AI assistant. **Go** owns production edges (API gateway, auth, rate limits, proxy, future MCP server). **Python** owns the AI layer (orchestrator, LLM providers, tools, policy, notes/memory). Long-term plan: seven phases in `docs/JARVIS_Roadmap_v2.md`.
 
-**Phase 2 is complete.** Start Phase 3 with `docs/Phase3_Getting_Started.md`.
+**Phase 2 complete.** Start **Phase 3 Reach** with `docs/Phase3_Getting_Started.md`. Roadmap: `docs/JARVIS_Roadmap_v2.md`.
 
 ---
 
@@ -101,8 +101,14 @@ Set `DATABASE_URL` (Neon or local) for durable notes, reminders, memory, pending
 | Tool | Tier | v2 behavior |
 |------|------|-------------|
 | `calculator` | Safe | Auto-run |
-| `get_note`, `list_reminders`, `search_memory` | Safe | Read-only; scoped by `user_id` |
+| `get_note`, `list_reminders`, `search_memory`, `remember_fact` | Safe | Read/store memory; scoped by `user_id` |
 | `save_note`, `set_reminder` | ConfirmRequired | Block until `POST /api/v1/actions/{id}/approve` (plain Yes/No UI in Phase 4 Reach) |
+
+### Long-term memory (Phase 2 — Postgres)
+
+- **Store:** `memory_facts` table (`PostgresMemoryStore`). Graphiti/Neo4j optional in Phase 5+ behind the same `MemoryStore` interface.
+- **Write:** `remember_fact` tool, rule-based extraction after chat turns, `save_note` index (deduped).
+- **Read:** Injected into system prompt + `search_memory` tool.
 
 Confirm-tier tools **require** an authenticated `user_id` (via gateway JWT → `X-User-ID`). Executed tools are recorded in `tool_call_logs` with that `user_id`.
 

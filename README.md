@@ -1,16 +1,28 @@
 # JARVIS
 
-Personal AI assistant. Go handles infra/production concerns (API gateway, MCP server,
-databases). Python handles the AI layer (orchestration, agents, memory, RAG).
+Personal AI assistant. **Go** runs the production edge (gateway, auth, proxy). **Python** runs the AI layer (orchestrator, tools, memory).
 
-See `docs/JARVIS_Roadmap.md` for the 7-phase build plan.
-
-## Structure
-- `go/` — API gateway, MCP server, shared Go infra packages
-- `python/` — orchestrator, agents, tools, memory, RAG
-- `shared/` — OpenAPI contract + JSON schemas between the two services
-- `infra/` — docker-compose, k8s (Phase 7), terraform (Phase 7)
-- `docs/` — roadmap, architecture diagrams, ADRs
+**Roadmap:** [`docs/JARVIS_Roadmap_v2.md`](docs/JARVIS_Roadmap_v2.md) (active). Legacy: [`docs/JARVIS_Roadmap.md`](docs/JARVIS_Roadmap.md).
 
 ## Status
-Scaffolding only. No functioning code yet — see TODO comments per file.
+
+**Phase 2 complete** — multi-user auth, persisted chat, tools/policy/audit, Postgres memory.
+
+**Next:** Phase 3 **Reach** — deploy + web chat + 2-minute stranger onboarding. See [`docs/Phase3_Getting_Started.md`](docs/Phase3_Getting_Started.md).
+
+## Structure
+
+- `go/` — API gateway, user auth, MCP stub (Phase 4)
+- `python/` — orchestrator, LLM, tools, memory, conversations
+- `infra/` — Docker Compose
+- `docs/` — roadmap, Phase 2 complete, specs in `specs.md`
+
+## Quick start
+
+```bash
+cp .env.example .env
+make dev
+make test
+```
+
+Gateway: `http://localhost:8080` — signup at `POST /api/v1/auth/signup`, chat at `POST /api/v1/chat` with JWT.

@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from jarvis_ai.memory.helpers import add_fact_if_new
 from jarvis_ai.policy.policy import Tier
 from jarvis_ai.tools.base import Tool
 from jarvis_ai.tools.context import ToolContext
@@ -26,7 +27,7 @@ async def _run_save_note(args: dict[str, Any], ctx: ToolContext) -> str:
 
     note_id = await ctx.notes.create(ctx.user_id, content)
     if ctx.memory is not None:
-        await ctx.memory.add_fact(ctx.user_id, content, source="note")
+        await add_fact_if_new(ctx.memory, ctx.user_id, content, source="note")
     return f"Saved note {note_id}: {content}"
 
 

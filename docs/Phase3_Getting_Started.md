@@ -1,46 +1,37 @@
-# Phase 3 — Knowledge (RAG) — Start Here
+# Phase 3 — Reach — Start Here
 
-Phase 2 is complete in this repo. Phase 3 adds **document-grounded answers** with citations.
+Phase 2 is complete per [`docs/JARVIS_Roadmap_v2.md`](JARVIS_Roadmap_v2.md). Phase 3 is **Reach**: a real URL, signup → first useful reply in under two minutes, no hand-holding.
 
 ## Phase 2 recap (done)
 
-- Tool-calling agent loop with policy tiers
-- Notes, reminders, long-term memory (Postgres)
-- Confirm-required flow: `POST /api/v1/actions/{id}/approve` and `/reject`
-- Tool call audit logs in `tool_call_logs`
-- Gateway proxies chat + action endpoints
+- Real signup/login on gateway; `user_id` on every request
+- Postgres chat history (`conversations`, `messages`)
+- Tools, policy tiers, confirm API, `tool_call_logs`
+- Long-term memory (`memory_facts`, `remember_fact`, chat extraction) — Postgres, Graphiti deferred
 
-## Phase 3 goals (from roadmap)
+## Phase 3 goals (Reach)
 
-1. **Ingestion** — upload PDF/doc → extract → chunk → embed → store (start with **pgvector** on Neon or local Postgres)
-2. **Retrieval agent** — multi-hop search until enough evidence
-3. **Citations** — answers reference source chunks
-4. **Upload API + status** — `processing` → `ready`
+1. **Hosted deploy** — Fly.io / Railway + HTTPS
+2. **One channel** — minimal web chat UI (fastest path)
+3. **2-minute onboarding** — signup → first message → helpful reply
+4. **CI deploy gate** — extend [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
+5. **Uptime** — monitor `GET /health`
 
-## Suggested first tasks tomorrow
+## Not Phase 3
 
-1. Enable `pgvector` on your Neon project (or add extension migration `007_pgvector.sql`)
-2. Implement `jarvis_ai/rag/pipeline.py` (currently stub):
-   - `ingest_document(user_id, file_bytes, filename)`
-   - `search_chunks(user_id, query, limit)`
-3. Add tools: `search_documents` (safe), `ingest_document` (confirm-required)
-4. Wire retrieval into orchestrator system prompt (like memory injection today)
-5. Gateway route for `POST /api/v1/documents/upload` (multipart proxy)
+- Document RAG / pgvector → **Phase 6** (pilot-driven). See stub `python/jarvis_ai/rag/pipeline.py`.
 
-## Key files to extend
+## Suggested first tasks
 
-| Area | Path |
-|------|------|
-| RAG stub | `python/jarvis_ai/rag/pipeline.py` |
-| Migrations | `python/jarvis_ai/db/migrations/` |
-| Tools | `python/jarvis_ai/tools/` |
-| API | `python/jarvis_ai/api/main.py` |
-| Spec | `specs.md` |
+1. Static or SPA chat page: login, stream chat, show `conversation_id`
+2. Production env + managed Postgres + secrets
+3. Wire CI to deploy on green tests
+4. Send a non-technical friend the link with zero instructions; time to first useful reply
 
 ## Dev commands
 
 ```bash
-make dev          # full stack
-make test         # Go + Python tests
+make dev
+make test
 cd python && pytest tests/ -v
 ```
