@@ -13,18 +13,13 @@ import (
 const apiKeyHeader = "X-API-Key"
 
 func Authentication(deps Deps) gin.HandlerFunc {
-	public := make(map[string]struct{}, len(deps.Config.PublicPaths))
-	for _, p := range deps.Config.PublicPaths {
-		public[p] = struct{}{}
-	}
-
 	apiKeys := make(map[string]struct{}, len(deps.Config.APIKeys))
 	for _, k := range deps.Config.APIKeys {
 		apiKeys[k] = struct{}{}
 	}
 
 	return func(c *gin.Context) {
-		if _, ok := public[c.Request.URL.Path]; ok {
+		if deps.Config.IsPublicPath(c.Request.URL.Path) {
 			c.Next()
 			return
 		}

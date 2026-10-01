@@ -14,6 +14,7 @@ Personal AI assistant. **Go** runs the production edge (gateway, auth, proxy). *
 
 - `go/` — API gateway, user auth, MCP stub (Phase 4)
 - `python/` — orchestrator, LLM, tools, memory, conversations
+- `web/` — Vite + React chat UI (Phase 3)
 - `infra/` — Docker Compose
 - `docs/` — roadmap, Phase 2 complete, specs in `specs.md`
 
@@ -25,4 +26,6 @@ make dev
 make test
 ```
 
-Gateway: `http://localhost:8080` — signup at `POST /api/v1/auth/signup`, chat at `POST /api/v1/chat` with JWT.
+Gateway: `http://localhost:8080` — signup at `POST /api/v1/auth/signup`, chat at `POST /api/v1/chat/stream` with JWT.
+
+Web UI (dev): `cd web && npm install && npm run dev` → `http://localhost:5173` (proxies `/api` to the gateway).

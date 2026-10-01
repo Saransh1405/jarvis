@@ -15,6 +15,9 @@ dist/
 .pytest_cache/
 .ruff_cache/
 
+# Web (Vite)
+web/node_modules/
+
 # General
 .DS_Store
 .idea/

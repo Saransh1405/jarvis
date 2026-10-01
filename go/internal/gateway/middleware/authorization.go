@@ -20,13 +20,8 @@ var routeRequirements = map[string]PermissionRequirement{
 }
 
 func Authorization(cfg *config.Config) gin.HandlerFunc {
-	public := make(map[string]struct{}, len(cfg.PublicPaths))
-	for _, p := range cfg.PublicPaths {
-		public[p] = struct{}{}
-	}
-
 	return func(c *gin.Context) {
-		if _, ok := public[c.Request.URL.Path]; ok {
+		if cfg.IsPublicPath(c.Request.URL.Path) {
 			c.Next()
 			return
 		}

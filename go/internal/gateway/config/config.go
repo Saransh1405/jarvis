@@ -49,9 +49,25 @@ type Config struct {
 	TracingEnabled bool
 	ServiceName    string
 
-	PublicPaths []string
+	PublicPaths         []string
+	PublicPathPrefixes  []string
 
 	AuditLogEnabled bool
+}
+
+// IsPublicPath reports whether a request path skips JWT authentication.
+func (c *Config) IsPublicPath(path string) bool {
+	for _, p := range c.PublicPaths {
+		if path == p {
+			return true
+		}
+	}
+	for _, prefix := range c.PublicPathPrefixes {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func Load() (*Config, error) {
@@ -131,6 +147,7 @@ func Load() (*Config, error) {
 		PublicPaths: envCSVWithDefault("GATEWAY_PUBLIC_PATHS", []string{
 			"/health", "/ready", "/live", "/api/v1/auth/login", "/api/v1/auth/signup",
 		}),
+		PublicPathPrefixes: envCSVWithDefault("GATEWAY_PUBLIC_PATH_PREFIXES", nil),
 		AuditLogEnabled: envBool("GATEWAY_AUDIT_LOG_ENABLED", false),
 	}
 
