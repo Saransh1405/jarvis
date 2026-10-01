@@ -4,12 +4,14 @@ from jarvis_ai.config.settings import Settings
 from jarvis_ai.llm.factory import LLMProviderError, create_llm_provider, resolve_model
 from jarvis_ai.llm.openai_provider import OpenAIProvider
 from jarvis_ai.llm.anthropic_provider import AnthropicProvider
+from jarvis_ai.llm.gemini_provider import GeminiProvider
 from jarvis_ai.llm.stub import StubLLMProvider
 
 
 def test_resolve_model_uses_default_for_stub():
     assert resolve_model("openai", "stub-model") == "gpt-4o-mini"
     assert resolve_model("anthropic", "stub-model") == "claude-sonnet-4-20250514"
+    assert resolve_model("gemini", "stub-model") == "gemini-3.8-flash"
 
 
 def test_resolve_model_uses_explicit():
@@ -38,6 +40,37 @@ def test_factory_openai_with_key():
     provider = create_llm_provider(settings)
     assert isinstance(provider, OpenAIProvider)
     assert provider.model == "gpt-4o-mini"
+    assert provider.name == "openai"
+
+
+def test_factory_openai_with_base_url():
+    settings = Settings(
+        llm_provider="openai",
+        openai_api_key="sk-test",
+        llm_base_url="https://openrouter.ai/api/v1",
+    )
+    provider = create_llm_provider(settings)
+    assert isinstance(provider, OpenAIProvider)
+    assert "openrouter.ai" in str(provider._client.base_url)
+
+
+def test_factory_gemini_requires_key():
+    settings = Settings(llm_provider="gemini", gemini_api_key="", llm_api_key="")
+    with pytest.raises(LLMProviderError, match="GEMINI_API_KEY"):
+        create_llm_provider(settings)
+
+
+def test_factory_gemini_with_key():
+    settings = Settings(
+        llm_provider="gemini",
+        gemini_api_key="AIza-test",
+        llm_model="gemini-3.8-flash",
+    )
+    provider = create_llm_provider(settings)
+    assert isinstance(provider, GeminiProvider)
+    assert provider.model == "gemini-3.8-flash"
+    assert provider.name == "gemini"
+    assert "generativelanguage.googleapis.com" in str(provider._client.base_url)
 
 
 def test_factory_anthropic_with_fallback_key():
@@ -52,7 +85,7 @@ def test_factory_anthropic_with_fallback_key():
 
 def test_factory_unknown_provider():
     settings = Settings(llm_provider="stub")
-    settings.llm_provider = "gemini"  # type: ignore[assignment]
+    settings.llm_provider = "unknown-vendor"  # type: ignore[assignment]
     with pytest.raises(LLMProviderError, match="Unknown LLM_PROVIDER"):
         create_llm_provider(settings)
 

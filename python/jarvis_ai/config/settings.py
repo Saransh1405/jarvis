@@ -3,7 +3,7 @@ from typing import Literal
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-LLMProviderName = Literal["stub", "openai", "anthropic"]
+LLMProviderName = Literal["stub", "openai", "anthropic", "gemini"]
 
 
 class Settings(BaseSettings):
@@ -16,14 +16,17 @@ class Settings(BaseSettings):
     python_api_host: str = "0.0.0.0"
     python_api_port: int = 8000
 
-    # Active LLM vendor: stub | openai | anthropic
+    # Active LLM vendor: stub | openai | anthropic | gemini
     llm_provider: LLMProviderName = "stub"
     # Model for the active provider (leave stub-model to use vendor defaults)
     llm_model: str = "stub-model"
+    # Optional OpenAI-compatible base URL (OpenRouter, xAI, custom proxy)
+    llm_base_url: str = ""
     # Generic fallback key when vendor-specific key is not set
     llm_api_key: str = ""
     openai_api_key: str = ""
     anthropic_api_key: str = ""
+    gemini_api_key: str = ""
     llm_max_tokens: int = Field(default=4096, ge=1, le=200000)
 
     # Postgres (Neon or local). DATABASE_URL takes precedence over POSTGRES_DSN.

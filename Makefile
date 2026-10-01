@@ -11,7 +11,7 @@ web-build:
 	cd web && npm run build
 
 dev:
-	$(COMPOSE) $(COMPOSE_DEV_FILES) up --build
+	$(COMPOSE) --env-file .env $(COMPOSE_DEV_FILES) up --build
 
 down:
 	$(COMPOSE) $(COMPOSE_FILES) down

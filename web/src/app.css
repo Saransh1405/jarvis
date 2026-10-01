@@ -590,6 +590,52 @@ header {
   margin: 0 auto;
   padding: 0.5rem 1.25rem calc(0.75rem + env(safe-area-inset-bottom));
 }
+.confirm-bar {
+  max-width: 50rem;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0.65rem 1.25rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.confirm-bar p {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--text);
+}
+.confirm-detail {
+  color: var(--muted);
+  font-weight: 400;
+}
+.confirm-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+.confirm-btn {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.45rem 1rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--surface);
+  color: var(--text);
+}
+.confirm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.confirm-btn.approve {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--accent), #7c3aed);
+  color: #fff;
+}
+.confirm-btn.reject:hover:not(:disabled) {
+  border-color: var(--muted);
+}
 .box {
   display: flex;
   align-items: flex-end;

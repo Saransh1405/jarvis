@@ -34,7 +34,7 @@ async def _run_save_note(args: dict[str, Any], ctx: ToolContext) -> str:
 def save_note_tool() -> Tool:
     return Tool(
         name="save_note",
-        description="Save a short note for later reference.",
+        description="Save a short note for later reference. Requires user approval before it is saved.",
         tier=Tier.CONFIRM_REQUIRED,
         parameters={
             "type": "object",

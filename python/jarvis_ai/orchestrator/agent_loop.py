@@ -1,5 +1,6 @@
 """Agent loop — LLM picks tools, orchestrator runs them, LLM answers."""
 
+import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -8,6 +9,15 @@ from jarvis_ai.llm.base import LLMProvider
 from jarvis_ai.llm.messages import append_assistant_turn, append_tool_results, initial_messages
 from jarvis_ai.policy.decisions import PolicyDecision
 from jarvis_ai.policy.engine import PolicyEngine
+from jarvis_ai.observability.tool_log import (
+    log_tool_confirm_required,
+    log_tool_policy_denied,
+)
+from jarvis_ai.orchestrator.routing import (
+    try_extract_calculator_expression,
+    try_extract_save_note_content,
+    try_extract_set_reminder_args,
+)
 from jarvis_ai.tools.context import PendingActionsStore, ToolCallLogStore, ToolContext
 from jarvis_ai.tools.registry import ToolRegistry
 
@@ -41,11 +51,11 @@ def _needs_confirm_message(tool_name: str, action_id: str | None) -> str:
     if action_id:
         return (
             f"I need your approval before I can run `{tool_name}`. "
-            f"Approve action `{action_id}` via POST /api/v1/actions/{action_id}/approve."
+            f"Tap **Approve** below to continue (action `{action_id}`)."
         )
     return (
         f"I need your approval before I can run `{tool_name}`. "
-        "Authenticate so the action can be stored for approval."
+        "Please sign in so the action can be stored for approval."
     )
 
 
@@ -61,6 +71,100 @@ async def _log_tool_call(
     if not ctx.user_id:
         return
     await logger.log(ctx.user_id, tool_name, arguments, result)
+
+
+async def _try_calculator_shortcut(
+    user_message: str,
+    registry: ToolRegistry,
+    ctx: ToolContext,
+    tool_logger: ToolCallLogStore | None,
+) -> AgentResult | None:
+    """Run calculator without LLM when the user message is clearly arithmetic."""
+    expression = try_extract_calculator_expression(user_message)
+    if not expression:
+        return None
+    if registry.get("calculator") is None:
+        return None
+    result = await registry.run("calculator", {"expression": expression}, ctx)
+    await _log_tool_call(tool_logger, ctx, "calculator", {"expression": expression}, result)
+    return AgentResult(
+        message=f"{expression} = {result.strip()}",
+        tools_used=["calculator"],
+    )
+
+
+async def _try_confirm_tool_shortcut(
+    user_message: str,
+    messages: list[dict[str, Any]],
+    registry: ToolRegistry,
+    ctx: ToolContext,
+    pending_store: PendingActionsStore | None,
+    conversation_id: str | None,
+) -> AgentResult | None:
+    """Start save_note / set_reminder confirm flow without relying on the LLM."""
+    if not ctx.user_id or pending_store is None:
+        return None
+
+    note_content = try_extract_save_note_content(user_message)
+    if note_content and registry.get("save_note") is not None:
+        return await _start_pending_tool(
+            "save_note",
+            {"content": note_content},
+            messages,
+            ctx,
+            pending_store,
+            conversation_id,
+        )
+
+    reminder_args = try_extract_set_reminder_args(user_message)
+    if reminder_args and registry.get("set_reminder") is not None:
+        return await _start_pending_tool(
+            "set_reminder",
+            reminder_args,
+            messages,
+            ctx,
+            pending_store,
+            conversation_id,
+        )
+
+    return None
+
+
+async def _start_pending_tool(
+    tool_name: str,
+    arguments: dict[str, Any],
+    messages: list[dict[str, Any]],
+    ctx: ToolContext,
+    pending_store: PendingActionsStore,
+    conversation_id: str | None,
+) -> AgentResult:
+    call_id = f"call_{uuid.uuid4().hex[:12]}"
+    turn = AgentTurn(
+        tool_calls=[
+            ToolCall(id=call_id, name=tool_name, arguments=arguments),
+        ]
+    )
+    append_assistant_turn(messages, turn)
+    action_id = await pending_store.create(
+        user_id=ctx.user_id or "",
+        tool_call_id=call_id,
+        tool_name=tool_name,
+        arguments=arguments,
+        messages=messages,
+        conversation_id=conversation_id,
+    )
+    log_tool_confirm_required(ctx.user_id, tool_name, action_id)
+    confirm_msg = _needs_confirm_message(tool_name, action_id)
+    return AgentResult(
+        message=confirm_msg,
+        tools_used=[],
+        pending_action=PendingAction(
+            action_id=action_id,
+            tool_call_id=call_id,
+            tool_name=tool_name,
+            arguments=arguments,
+        ),
+    )
 
 
 async def _agent_loop(
@@ -94,6 +198,7 @@ async def _agent_loop(
                 )
 
                 if decision == PolicyDecision.DENY:
+                    log_tool_policy_denied(ctx.user_id, call.name)
                     results.append(_policy_denied_message(call.name))
                     continue
 
@@ -108,6 +213,7 @@ async def _agent_loop(
                             messages=messages,
                             conversation_id=conversation_id,
                         )
+                    log_tool_confirm_required(ctx.user_id, call.name, action_id)
                     confirm_msg = _needs_confirm_message(call.name, action_id)
                     return AgentResult(
                         message=confirm_msg,
@@ -200,6 +306,19 @@ async def run_agent(
         )
     messages = initial_messages(user_message, system=system_prompt)
     tools_used: list[str] = []
+    shortcut = await _try_calculator_shortcut(user_message, registry, ctx, tool_logger)
+    if shortcut is not None:
+        return shortcut
+    pending = await _try_confirm_tool_shortcut(
+        user_message,
+        messages,
+        registry,
+        ctx,
+        pending_store,
+        conversation_id,
+    )
+    if pending is not None:
+        return pending
     return await _agent_loop(
         llm,
         registry,

@@ -17,6 +17,20 @@ export type ChatMessage = {
 export type StreamResult = {
   conversationId: string | null;
   message: string;
+  pendingAction: PendingAction | null;
+};
+
+export type PendingAction = {
+  action_id: string | null;
+  tool_call_id: string;
+  tool_name: string;
+  arguments: Record<string, unknown>;
+};
+
+export type ApproveChatResult = {
+  message: string;
+  conversation_id: string;
+  tools_used?: string[] | null;
 };
 
 type ApiErrorBody = {
@@ -136,8 +150,75 @@ type StreamEvent = {
   content?: string;
   conversation_id?: string;
   error?: string;
-  pending_action?: { tool_name?: string };
+  pending_action?: PendingAction;
 };
+
+function parsePendingAction(raw: unknown): PendingAction | null {
+  if (!raw || typeof raw !== "object") return null;
+  const p = raw as PendingAction;
+  if (!p.tool_name) return null;
+  return p;
+}
+
+/** Backend embeds action id in the approval message if SSE payload omits it. */
+export function extractActionIdFromMessage(message: string): string | null {
+  const backtick = message.match(/Approve action `([^`]+)`/);
+  if (backtick?.[1]) return backtick[1];
+  const paren = message.match(/\(action `([^`]+)`\)/);
+  if (paren?.[1]) return paren[1];
+  const plain = message.match(/Approve action ([0-9a-f-]{36})/i);
+  return plain?.[1] ?? null;
+}
+
+export function resolvePendingAction(
+  pending: PendingAction | null,
+  assistantMessage: string,
+): PendingAction | null {
+  if (!pending?.tool_name) return null;
+  if (pending.action_id) return pending;
+  const actionId = extractActionIdFromMessage(assistantMessage);
+  if (!actionId) return null;
+  return { ...pending, action_id: actionId };
+}
+
+export async function approveAction(actionId: string): Promise<ApproveChatResult> {
+  const res = await fetch(`/api/v1/actions/${encodeURIComponent(actionId)}/approve`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: "{}",
+  });
+  const data = await parseJSON(res);
+  if (res.status === 401) throw new Error("unauthorized");
+  if (!res.ok) {
+    throw new Error(apiErrorMessage(data, "Could not approve that action."));
+  }
+  const body = data as ApproveChatResult & { message?: string; conversation_id?: string };
+  if (!body.message || !body.conversation_id) {
+    throw new Error("Invalid approve response");
+  }
+  return body;
+}
+
+export async function rejectAction(actionId: string): Promise<{ message: string }> {
+  const res = await fetch(`/api/v1/actions/${encodeURIComponent(actionId)}/reject`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: "{}",
+  });
+  const data = await parseJSON(res);
+  if (res.status === 401) throw new Error("unauthorized");
+  if (!res.ok) {
+    throw new Error(apiErrorMessage(data, "Could not reject that action."));
+  }
+  const body = data as { message?: string };
+  return { message: body.message ?? "Action cancelled." };
+}
+
+export function pendingActionLabel(action: PendingAction): string {
+  if (action.tool_name === "save_note") return "Save a note";
+  if (action.tool_name === "set_reminder") return "Set a reminder";
+  return action.tool_name.replace(/_/g, " ");
+}
 
 export async function streamChat(
   message: string,
@@ -161,6 +242,7 @@ export async function streamChat(
   let buf = "";
   let full = "";
   let convId = conversationId;
+  let pendingAction: PendingAction | null = null;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -180,17 +262,22 @@ export async function streamChat(
       if (ev.type === "token" && ev.content) {
         full += ev.content;
         onUpdate(full);
-      } else if (ev.type === "done" && ev.conversation_id) {
-        convId = ev.conversation_id;
+      } else if (ev.type === "status") {
+        onUpdate("");
+      } else if (ev.type === "done") {
+        if (ev.conversation_id) convId = ev.conversation_id;
+        const pending = parsePendingAction(ev.pending_action);
+        if (pending) pendingAction = pending;
       } else if (ev.type === "confirm_required") {
-        full += `\n\n[Action requires approval: ${ev.pending_action?.tool_name ?? "tool"}]`;
-        onUpdate(full);
+        if (ev.conversation_id) convId = ev.conversation_id;
+        const pending = parsePendingAction(ev.pending_action);
+        if (pending) pendingAction = pending;
       } else if (ev.type === "error") {
         throw new Error(ev.error ?? "Chat error");
       }
     }
   }
-  return { conversationId: convId, message: full };
+  return { conversationId: convId, message: full, pendingAction };
 }
 
 export const STARTER_CARDS = [

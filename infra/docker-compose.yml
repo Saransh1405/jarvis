@@ -1,24 +1,27 @@
 name: jarvis
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-jarvis}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jarvis}
-      POSTGRES_DB: ${POSTGRES_DB:-jarvis}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ../go/migrations:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jarvis} -d ${POSTGRES_DB:-jarvis}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
-    networks:
-      - jarvis
+  # Local Postgres (optional). Use profile local-postgres: `docker compose --profile local-postgres up`
+  # With Neon, set DATABASE_URL + POSTGRES_DSN in .env and leave this service off.
+  # postgres:
+  #   image: postgres:16-alpine
+  #   restart: unless-stopped
+  #   profiles: ["local-postgres"]
+  #   environment:
+  #     POSTGRES_USER: ${POSTGRES_USER:-jarvis}
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jarvis}
+  #     POSTGRES_DB: ${POSTGRES_DB:-jarvis}
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #     - ../go/migrations:/docker-entrypoint-initdb.d:ro
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jarvis} -d ${POSTGRES_DB:-jarvis}"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 10
+  #     start_period: 10s
+  #   networks:
+  #     - jarvis
 
   redis:
     image: redis:7-alpine
@@ -44,9 +47,6 @@ services:
       PYTHON_API_PORT: 8000
       DATABASE_URL: ${DATABASE_URL:-}
       POSTGRES_DSN: ${POSTGRES_DSN:-}
-    depends_on:
-      postgres:
-        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')\" || exit 1"]
       interval: 10s
@@ -67,7 +67,7 @@ services:
       GATEWAY_HOST: 0.0.0.0
       GATEWAY_PORT: 8080
       PYTHON_API_URL: http://api:8000
-      POSTGRES_DSN: postgres://${POSTGRES_USER:-jarvis}:${POSTGRES_PASSWORD:-jarvis}@postgres:5432/${POSTGRES_DB:-jarvis}?sslmode=disable
+      POSTGRES_DSN: ${POSTGRES_DSN:-}
       REDIS_URL: redis://redis:6379/0
       GATEWAY_TRACING_ENABLED: "false"
     ports:
@@ -76,8 +76,6 @@ services:
       api:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      postgres:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
@@ -92,5 +90,5 @@ networks:
   jarvis:
     driver: bridge
 
-volumes:
-  postgres_data:
+# volumes:
+#   postgres_data:

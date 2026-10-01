@@ -13,13 +13,24 @@ from jarvis_ai.llm.base import DEFAULT_SYSTEM_PROMPT, LLMProvider
 class OpenAIProvider(LLMProvider):
     """OpenAI Chat Completions API (streaming + tool calling)."""
 
-    def __init__(self, api_key: str, model: str) -> None:
-        self._client = AsyncOpenAI(api_key=api_key)
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        *,
+        base_url: str | None = None,
+        provider_label: str = "openai",
+    ) -> None:
+        client_kwargs: dict[str, str] = {"api_key": api_key}
+        if base_url:
+            client_kwargs["base_url"] = base_url.rstrip("/") + "/"
+        self._client = AsyncOpenAI(**client_kwargs)
         self._model = model
+        self._provider_label = provider_label
 
     @property
     def name(self) -> str:
-        return "openai"
+        return self._provider_label
 
     @property
     def model(self) -> str:

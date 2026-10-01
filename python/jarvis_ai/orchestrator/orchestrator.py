@@ -4,9 +4,15 @@ from collections.abc import AsyncIterator
 from typing import Any, Protocol
 
 from jarvis_ai.config.settings import Settings
-from jarvis_ai.conversations.history import llm_message_to_stored, stored_messages_to_llm
+from jarvis_ai.conversations.history import (
+    apply_pending_confirm_to_messages,
+    llm_message_to_stored,
+    stored_messages_to_llm,
+    tool_calls_metadata_for_pending,
+)
 from jarvis_ai.memory.extraction import extract_chat_facts
 from jarvis_ai.memory.helpers import store_extracted_facts
+from jarvis_ai.observability.tool_log import log_agent_tools_summary
 from jarvis_ai.llm.agent_types import ToolCall
 from jarvis_ai.llm.base import DEFAULT_SYSTEM_PROMPT, LLMProvider
 from jarvis_ai.llm.factory import create_llm_provider
@@ -16,6 +22,8 @@ from jarvis_ai.orchestrator.agent_loop import (
     resume_agent_after_approval,
     run_agent,
     run_agent_with_messages,
+    _try_calculator_shortcut,
+    _try_confirm_tool_shortcut,
 )
 from jarvis_ai.policy.engine import PolicyEngine
 from jarvis_ai.tools.context import (
@@ -233,6 +241,7 @@ class Orchestrator:
                 pending_store=self._pending_actions,
                 tool_logger=self._tool_logger,
             )
+            log_agent_tools_summary(user_id, conv_id, result.tools_used)
             return conv_id, result
 
         if not user_id:
@@ -253,6 +262,38 @@ class Orchestrator:
         llm_messages = stored_messages_to_llm(history, system_prompt)
         await self._conversations.append_message(user_id, conv_id, "user", message)
         llm_messages.append({"role": "user", "content": message})
+        ctx = self._tool_context(user_id)
+        shortcut = await _try_calculator_shortcut(
+            message, self._tools, ctx, self._tool_logger
+        )
+        if shortcut is not None:
+            await self._conversations.append_message(
+                user_id, conv_id, "assistant", shortcut.message
+            )
+            log_agent_tools_summary(user_id, conv_id, shortcut.tools_used)
+            return conv_id, shortcut
+
+        pending = await _try_confirm_tool_shortcut(
+            message,
+            llm_messages,
+            self._tools,
+            ctx,
+            self._pending_actions,
+            conv_id,
+        )
+        if pending is not None:
+            meta: dict[str, Any] = {}
+            if pending.pending_action is not None:
+                pa = pending.pending_action
+                meta["tool_calls"] = tool_calls_metadata_for_pending(
+                    pa.tool_call_id, pa.tool_name, pa.arguments
+                )
+            await self._conversations.append_message(
+                user_id, conv_id, "assistant", pending.message, meta or None
+            )
+            log_agent_tools_summary(user_id, conv_id, pending.tools_used)
+            return conv_id, pending
+
         agent_start = len(llm_messages)
 
         result = await run_agent_with_messages(
@@ -266,11 +307,10 @@ class Orchestrator:
             pending_store=self._pending_actions,
             tool_logger=self._tool_logger,
         )
-        await self._persist_llm_slice(user_id, conv_id, llm_messages, agent_start)
         if result.pending_action is not None:
-            await self._conversations.append_message(
-                user_id, conv_id, "assistant", result.message
-            )
+            apply_pending_confirm_to_messages(llm_messages, result.message)
+        await self._persist_llm_slice(user_id, conv_id, llm_messages, agent_start)
+        log_agent_tools_summary(user_id, conv_id, result.tools_used)
         return conv_id, result
 
     def _chat_error_response(self, exc: Exception) -> dict:
@@ -278,7 +318,30 @@ class Orchestrator:
             return {"error": str(exc), "status_code": 401}
         if isinstance(exc, LookupError):
             return {"error": str(exc), "status_code": 404}
+        llm_err = self._llm_provider_error(exc)
+        if llm_err is not None:
+            return llm_err
         raise exc
+
+    @staticmethod
+    def _llm_provider_error(exc: Exception) -> dict | None:
+        """Map vendor SDK errors to a client-safe chat error payload."""
+        try:
+            from anthropic import APIError as AnthropicAPIError
+        except ImportError:
+            AnthropicAPIError = ()  # type: ignore[misc, assignment]
+
+        try:
+            from openai import APIError as OpenAIAPIError
+        except ImportError:
+            OpenAIAPIError = ()  # type: ignore[misc, assignment]
+
+        if isinstance(exc, (OpenAIAPIError, AnthropicAPIError)):
+            status = getattr(exc, "status_code", None)
+            if not isinstance(status, int) or status < 400 or status > 599:
+                status = 502
+            return {"error": str(exc), "status_code": status}
+        return None
 
     async def chat(
         self,
@@ -290,6 +353,11 @@ class Orchestrator:
             conv_id, result = await self._run_chat_agent(message, conversation_id, user_id)
         except (ValueError, LookupError) as exc:
             return self._chat_error_response(exc)
+        except Exception as exc:
+            llm_err = self._llm_provider_error(exc)
+            if llm_err is not None:
+                return llm_err
+            raise
 
         await self._capture_chat_memory(user_id, message, result)
 
@@ -309,9 +377,11 @@ class Orchestrator:
         conversation_id: str | None = None,
         user_id: str | None = None,
     ) -> AsyncIterator[str]:
+        yield json.dumps({"type": "status", "phase": "thinking"})
+
         try:
             conv_id, result = await self._run_chat_agent(message, conversation_id, user_id)
-        except (ValueError, LookupError) as exc:
+        except Exception as exc:
             err = self._chat_error_response(exc)
             yield json.dumps({"type": "error", "error": err["error"], "status_code": err["status_code"]})
             return
@@ -327,8 +397,8 @@ class Orchestrator:
                 }
             )
 
-        for char in result.message:
-            yield json.dumps({"type": "token", "content": char})
+        for chunk in re.findall(r"\S+\s*|\n", result.message):
+            yield json.dumps({"type": "token", "content": chunk})
 
         yield json.dumps(
             {

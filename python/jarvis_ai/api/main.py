@@ -1,4 +1,6 @@
 import json
+import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -21,6 +23,20 @@ from jarvis_ai.reminders.memory import InMemoryRemindersStore
 from jarvis_ai.reminders.repository import RemindersRepository
 
 settings = Settings()
+
+
+def _configure_logging() -> None:
+    level_name = os.environ.get("LOG_LEVEL", "INFO").upper()
+    level = getattr(logging, level_name, logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(levelname)s %(name)s %(message)s",
+        force=True,
+    )
+    logging.getLogger("jarvis_ai").setLevel(level)
+
+
+_configure_logging()
 
 
 @asynccontextmanager

@@ -19,6 +19,8 @@ class AgentTurn:
 
     text: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
+    # Vendor-specific tool_call objects (e.g. Gemini thought_signature on extra_content)
+    tool_call_payloads: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def wants_tools(self) -> bool:

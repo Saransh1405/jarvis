@@ -12,15 +12,6 @@ from tests.conftest import ScriptedLLM
 async def test_save_note_pending_then_approve_persists() -> None:
     llm = ScriptedLLM(
         [
-            AgentTurn(
-                tool_calls=[
-                    ToolCall(
-                        id="call_1",
-                        name="save_note",
-                        arguments={"content": "passport renewal"},
-                    )
-                ]
-            ),
             AgentTurn(text="Done — I saved your note about passport renewal."),
         ]
     )

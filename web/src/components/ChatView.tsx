@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
+  approveAction,
   clearToken,
   fetchConversations,
   fetchMessages,
   greeting,
+  pendingActionLabel,
+  resolvePendingAction,
+  rejectAction,
   STARTER_CARDS,
   streamChat,
   type ChatMessage,
   type ConversationListItem,
+  type PendingAction,
 } from "../api";
 import { Icon } from "./Icon";
 import { MessageRow } from "./MessageRow";
@@ -26,6 +31,7 @@ export function ChatView({ onLogout }: ChatViewProps) {
   const [busy, setBusy] = useState(false);
   const [sideOpen, setSideOpen] = useState(false);
   const [draft, setDraft] = useState("");
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -86,6 +92,7 @@ export function ChatView({ onLogout }: ChatViewProps) {
     setCurrent(null);
     setMessages([]);
     setShowEmpty(true);
+    setPendingAction(null);
     closeSide();
     textareaRef.current?.focus();
   }
@@ -124,6 +131,7 @@ export function ChatView({ onLogout }: ChatViewProps) {
     };
     setMessages((m) => [...m, userMsg, botMsg]);
     setBusy(true);
+    setPendingAction(null);
 
     try {
       const result = await streamChat(text, current?.id ?? null, (partial) => {
@@ -142,6 +150,12 @@ export function ChatView({ onLogout }: ChatViewProps) {
         });
       } else if (result.conversationId) {
         setCurrent({ ...current, id: result.conversationId });
+      }
+      if (result.pendingAction?.action_id) {
+        setPendingAction(result.pendingAction);
+      } else {
+        const resolved = resolvePendingAction(result.pendingAction, result.message);
+        if (resolved?.action_id) setPendingAction(resolved);
       }
       await refreshConversations();
     } catch (err) {
@@ -163,6 +177,82 @@ export function ChatView({ onLogout }: ChatViewProps) {
     } finally {
       setBusy(false);
       textareaRef.current?.focus();
+    }
+  }
+
+  async function onApprovePending() {
+    const actionId = pendingAction?.action_id;
+    if (!actionId || busy) return;
+    setBusy(true);
+    try {
+      const result = await approveAction(actionId);
+      setPendingAction(null);
+      setMessages((m) => {
+        const lastAssistant = [...m].reverse().find((row) => row.role === "assistant");
+        if (lastAssistant) {
+          return m.map((row) =>
+            row.id === lastAssistant.id
+              ? { ...row, content: result.message, streaming: false }
+              : row,
+          );
+        }
+        return [
+          ...m,
+          {
+            id: `b-approve-${Date.now()}`,
+            role: "assistant",
+            content: result.message,
+          },
+        ];
+      });
+      if (result.conversation_id) {
+        setCurrent((c) =>
+          c ? { ...c, id: result.conversation_id } : { id: result.conversation_id, title: "Chat", group: "Today" },
+        );
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message === "unauthorized") {
+        onLogout();
+      } else {
+        setMessages((m) => [
+          ...m,
+          {
+            id: `err-${Date.now()}`,
+            role: "assistant",
+            content: err instanceof Error ? err.message : "Approve failed.",
+          },
+        ]);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRejectPending() {
+    const actionId = pendingAction?.action_id;
+    if (!actionId || busy) return;
+    setBusy(true);
+    try {
+      const result = await rejectAction(actionId);
+      setPendingAction(null);
+      setMessages((m) => {
+        const lastAssistant = [...m].reverse().find((row) => row.role === "assistant");
+        if (lastAssistant) {
+          return m.map((row) =>
+            row.id === lastAssistant.id ? { ...row, content: result.message, streaming: false } : row,
+          );
+        }
+        return [
+          ...m,
+          { id: `b-reject-${Date.now()}`, role: "assistant", content: result.message },
+        ];
+      });
+    } catch (err) {
+      if (err instanceof Error && err.message === "unauthorized") {
+        onLogout();
+      }
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -263,6 +353,32 @@ export function ChatView({ onLogout }: ChatViewProps) {
             ))}
           </div>
         </div>
+        {pendingAction?.action_id && (
+          <div className="confirm-bar" role="region" aria-label="Action approval">
+            <p>
+              <strong>{pendingActionLabel(pendingAction)}</strong>
+              <span className="confirm-detail"> — allow JARVIS to continue?</span>
+            </p>
+            <div className="confirm-actions">
+              <button
+                type="button"
+                className="confirm-btn reject"
+                disabled={busy}
+                onClick={() => void onRejectPending()}
+              >
+                Reject
+              </button>
+              <button
+                type="button"
+                className="confirm-btn approve"
+                disabled={busy}
+                onClick={() => void onApprovePending()}
+              >
+                Approve
+              </button>
+            </div>
+          </div>
+        )}
         <form className="composer" onSubmit={(e) => void onSend(e)}>
           <div className="box">
             <label htmlFor="msg" className="sr-only">

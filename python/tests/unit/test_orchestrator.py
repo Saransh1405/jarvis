@@ -10,7 +10,10 @@ from jarvis_ai.memory.store import InMemoryMemoryStore
 from jarvis_ai.notes.memory import InMemoryNotesStore
 from jarvis_ai.reminders.memory import InMemoryRemindersStore
 from jarvis_ai.orchestrator.orchestrator import Orchestrator
-from jarvis_ai.orchestrator.routing import try_extract_calculator_expression
+from jarvis_ai.orchestrator.routing import (
+    try_extract_calculator_expression,
+    try_extract_set_reminder_args,
+)
 from jarvis_ai.tools import build_default_registry
 
 
@@ -22,6 +25,8 @@ from jarvis_ai.tools import build_default_registry
         ("  CALCULATE  15*0.2  ", "15*0.2"),
         ("99*101", "99*101"),
         ("(10+5)/3", "(10+5)/3"),
+        ("What is 847 times 293?", "847*293"),
+        ("847 times 293", "847*293"),
     ],
 )
 def test_try_extract_calculator_expression_matches(message: str, expected: str) -> None:
@@ -36,6 +41,62 @@ def test_try_extract_calculator_expression_no_match(message: str) -> None:
     assert try_extract_calculator_expression(message) is None
 
 
+def test_try_extract_set_reminder_dentist_appointment() -> None:
+    args = try_extract_set_reminder_args("my dentist is on April 12 at 3pm")
+    assert args is not None
+    assert args["message"] == "Dentist appointment"
+    assert args["due_at"].endswith("Z")
+    assert "T15:00:00" in args["due_at"]
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_reminder_shortcut_pending_without_llm() -> None:
+    class FailIfCalledLLM(StubLLMProvider):
+        async def agent_turn(self, messages, tools):
+            raise AssertionError("LLM must not run for reminder routing shortcut")
+
+    orch = Orchestrator(
+        llm=FailIfCalledLLM(),
+        tools=build_default_registry(),
+        notes=InMemoryNotesStore(),
+        reminders=InMemoryRemindersStore(),
+        pending_actions=InMemoryPendingActionsStore(),
+    )
+    result = await orch.chat("my dentist is on April 12 at 3pm", None, user_id="user-1")
+    assert result["pending_action"]["tool_name"] == "set_reminder"
+    assert result["pending_action"]["action_id"]
+    assert result["source"] == "policy:pending:set_reminder"
+    assert "Approve" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_stream_reminder_shortcut_emits_confirm_required() -> None:
+    import json
+
+    class FailIfCalledLLM(StubLLMProvider):
+        async def agent_turn(self, messages, tools):
+            raise AssertionError("LLM must not run for reminder routing shortcut")
+
+    orch = Orchestrator(
+        llm=FailIfCalledLLM(),
+        tools=build_default_registry(),
+        notes=InMemoryNotesStore(),
+        reminders=InMemoryRemindersStore(),
+        pending_actions=InMemoryPendingActionsStore(),
+    )
+    events: list[dict] = []
+    async for payload in orch.stream_chat(
+        "my dentist is on April 12 at 3pm", user_id="user-1"
+    ):
+        events.append(json.loads(payload))
+
+    assert any(e.get("type") == "confirm_required" for e in events)
+    done = events[-1]
+    assert done["type"] == "done"
+    assert done["pending_action"]["tool_name"] == "set_reminder"
+    assert done["source"] == "policy:pending:set_reminder"
+
+
 @pytest.mark.asyncio
 async def test_agent_loop_calls_calculator_then_answers() -> None:
     llm = ScriptedLLM(
@@ -48,7 +109,11 @@ async def test_agent_loop_calls_calculator_then_answers() -> None:
             AgentTurn(text="99 times 101 is 9,999."),
         ]
     )
-    result = await run_agent(llm, build_default_registry(), "what is 99 times 101?")
+    result = await run_agent(
+        llm,
+        build_default_registry(),
+        "what is 99 times 101 without calc?",
+    )
     assert result.message == "99 times 101 is 9,999."
     assert result.tools_used == ["calculator"]
 

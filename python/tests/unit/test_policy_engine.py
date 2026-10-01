@@ -131,7 +131,7 @@ async def test_agent_loop_allows_calculator_through_policy() -> None:
         ]
     )
 
-    result = await run_agent(llm, registry, "calculate 2+2")
+    result = await run_agent(llm, registry, "please use the calculator for 2+2")
     assert result.message == "2+2 equals 4."
     assert result.tools_used == ["calculator"]
     assert result.pending_action is None

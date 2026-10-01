@@ -17,21 +17,25 @@ def initial_messages(user_message: str, system: str | None = None) -> list[dict[
 def append_assistant_turn(messages: list[dict[str, Any]], turn: AgentTurn) -> None:
     """Record the assistant message (and optional tool calls) in OpenAI-style format."""
     if turn.wants_tools:
+        if turn.tool_call_payloads:
+            tool_calls = turn.tool_call_payloads
+        else:
+            tool_calls = [
+                {
+                    "id": call.id,
+                    "type": "function",
+                    "function": {
+                        "name": call.name,
+                        "arguments": json.dumps(call.arguments),
+                    },
+                }
+                for call in turn.tool_calls
+            ]
         messages.append(
             {
                 "role": "assistant",
                 "content": turn.text,
-                "tool_calls": [
-                    {
-                        "id": call.id,
-                        "type": "function",
-                        "function": {
-                            "name": call.name,
-                            "arguments": json.dumps(call.arguments),
-                        },
-                    }
-                    for call in turn.tool_calls
-                ],
+                "tool_calls": tool_calls,
             }
         )
         return

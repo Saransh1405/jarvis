@@ -41,7 +41,11 @@ async def _run_set_reminder(args: dict[str, Any], ctx: ToolContext) -> str:
 def set_reminder_tool() -> Tool:
     return Tool(
         name="set_reminder",
-        description="Schedule a reminder at a specific date/time (ISO-8601 due_at).",
+        description=(
+            "Schedule a reminder at a specific date/time. "
+            "Use when the user asks to be reminded, notified, or pinged later. "
+            "Requires user approval before it is saved."
+        ),
         tier=Tier.CONFIRM_REQUIRED,
         parameters={
             "type": "object",

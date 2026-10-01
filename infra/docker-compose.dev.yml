@@ -26,9 +26,9 @@ services:
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
 
-  postgres:
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+  # postgres:
+  #   ports:
+  #     - "${POSTGRES_PORT:-5432}:5432"
 
   redis:
     ports:
