@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-surface-container-lowest font-body-md text-body-md text-on-surface antialiased;
+    overscroll-behavior: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-arc-spin-40,
+  .animate-arc-spin-32,
+  .animate-arc-spin-24-rev,
+  .animate-arc-spin-18-rev,
+  .animate-arc-spin-18,
+  .animate-arc-spin-12,
+  .animate-arc-spin-10,
+  .animate-arc-spin-8 {
+    animation: none !important;
+  }
+}
+
+::-webkit-scrollbar {
+  display: none;
+}

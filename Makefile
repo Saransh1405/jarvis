@@ -2,13 +2,19 @@ COMPOSE ?= docker compose
 COMPOSE_FILES := -f infra/docker-compose.yml
 COMPOSE_DEV_FILES := -f infra/docker-compose.yml -f infra/docker-compose.dev.yml
 
-.PHONY: dev down build logs ps test migrate web-dev web-build
+.PHONY: dev down build logs ps test migrate web-dev web-build web-stitch-dev web-stitch-build
 
 web-dev:
 	cd web && npm run dev
 
 web-build:
 	cd web && npm run build
+
+web-stitch-dev:
+	cd web-stitch && npm run dev
+
+web-stitch-build:
+	cd web-stitch && npm run build
 
 dev:
 	$(COMPOSE) --env-file .env $(COMPOSE_DEV_FILES) up --build

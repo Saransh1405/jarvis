@@ -67,7 +67,8 @@ services:
       GATEWAY_HOST: 0.0.0.0
       GATEWAY_PORT: 8080
       PYTHON_API_URL: http://api:8000
-      POSTGRES_DSN: ${POSTGRES_DSN:-}
+      POSTGRES_DSN: ${POSTGRES_DSN:-${DATABASE_URL}}
+      DATABASE_URL: ${DATABASE_URL:-}
       REDIS_URL: redis://redis:6379/0
       GATEWAY_TRACING_ENABLED: "false"
     ports:

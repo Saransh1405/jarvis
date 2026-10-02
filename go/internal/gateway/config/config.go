@@ -117,7 +117,7 @@ func Load() (*Config, error) {
 		ReadTimeout:         readTimeout,
 		WriteTimeout:        writeTimeout,
 		PythonAPIURL:        strings.TrimRight(envString("PYTHON_API_URL", "http://localhost:8000"), "/"),
-		PostgresDSN:         envString("POSTGRES_DSN", "postgres://jarvis:jarvis@localhost:5432/jarvis?sslmode=disable"),
+		PostgresDSN:         postgresDSN(),
 		RedisURL:            envString("REDIS_URL", "redis://localhost:6379/0"),
 		LogLevel:            envString("LOG_LEVEL", "info"),
 		LogFormat:           envString("LOG_FORMAT", "json"),
@@ -156,6 +156,32 @@ func Load() (*Config, error) {
 
 func (c *Config) Addr() string {
 	return fmt.Sprintf("%s:%d", c.Host, c.Port)
+}
+
+const defaultLocalPostgresDSN = "postgres://jarvis:jarvis@localhost:5432/jarvis?sslmode=disable"
+
+// postgresDSN resolves the gateway auth database URL.
+// Python uses DATABASE_URL; the gateway historically used POSTGRES_DSN only.
+// If POSTGRES_DSN still targets local Docker but DATABASE_URL is set (e.g. Neon), use DATABASE_URL.
+func postgresDSN() string {
+	dsn := strings.TrimSpace(os.Getenv("POSTGRES_DSN"))
+	dbURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
+	if dsn == "" {
+		if dbURL != "" {
+			return dbURL
+		}
+		return defaultLocalPostgresDSN
+	}
+	if dbURL != "" && pointsAtLocalPostgres(dsn) && !pointsAtLocalPostgres(dbURL) {
+		return dbURL
+	}
+	return dsn
+}
+
+func pointsAtLocalPostgres(dsn string) bool {
+	return strings.Contains(dsn, "@localhost:") ||
+		strings.Contains(dsn, "@127.0.0.1:") ||
+		strings.Contains(dsn, "@host.docker.internal:")
 }
 
 func envString(key, fallback string) string {

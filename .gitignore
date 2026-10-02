@@ -17,6 +17,10 @@ dist/
 
 # Web (Vite)
 web/node_modules/
+web-stitch/node_modules/
+web-stitch/stitch-export/
+web/dist/
+web-stitch/dist/
 
 # General
 .DS_Store
