@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   approveAction,
+  browserTimezone,
   clearToken,
   fetchConversations,
   fetchMessages,
+  fetchSettings,
   greeting,
   pendingActionLabel,
   resolvePendingAction,
   rejectAction,
   streamChat,
+  updateSettings,
   type ChatMessage,
   type ConversationListItem,
   type PendingAction,
@@ -17,13 +20,16 @@ import { QUICK_PROMPTS } from "../constants";
 import { ArcCoreHologram } from "./ArcCoreHologram";
 import { MaterialIcon } from "./MaterialIcon";
 
+const TZ_PROMPT_DISMISS_KEY = "jarvis_tz_prompt_dismissed";
+
 type CommandCoreViewProps = {
   onLogout: () => void;
+  onOpenSettings: () => void;
 };
 
 type UiMessage = ChatMessage & { streaming?: boolean };
 
-export function CommandCoreView({ onLogout }: CommandCoreViewProps) {
+export function CommandCoreView({ onLogout, onOpenSettings }: CommandCoreViewProps) {
   const [conversations, setConversations] = useState<ConversationListItem[]>([]);
   const [current, setCurrent] = useState<ConversationListItem | null>(null);
   const [messages, setMessages] = useState<UiMessage[]>([]);
@@ -31,6 +37,7 @@ export function CommandCoreView({ onLogout }: CommandCoreViewProps) {
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState("");
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [tzPrompt, setTzPrompt] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const scrollDown = useCallback(() => {
@@ -50,6 +57,20 @@ export function CommandCoreView({ onLogout }: CommandCoreViewProps) {
   useEffect(() => {
     void refreshConversations();
   }, [refreshConversations]);
+
+  useEffect(() => {
+    if (localStorage.getItem(TZ_PROMPT_DISMISS_KEY)) return;
+    const browserTz = browserTimezone();
+    if (browserTz === "UTC") return;
+    void (async () => {
+      try {
+        const s = await fetchSettings();
+        if (s.timezone === "UTC") setTzPrompt(browserTz);
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     scrollDown();
@@ -224,6 +245,14 @@ export function CommandCoreView({ onLogout }: CommandCoreViewProps) {
                   </div>
                   <span className="h-2 w-2 rounded-full bg-primary-container shadow-[0_0_8px_rgba(25,227,255,0.8)]" />
                 </div>
+                <button
+                  type="button"
+                  onClick={onOpenSettings}
+                  className="w-full flex items-center gap-space-sm px-space-sm py-space-sm rounded text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-all"
+                >
+                  <MaterialIcon name="settings" className="text-lg" />
+                  <span className="font-body-md text-body-md">Settings</span>
+                </button>
               </nav>
             </div>
             <div>
@@ -263,6 +292,42 @@ export function CommandCoreView({ onLogout }: CommandCoreViewProps) {
       </aside>
 
       <div className="lg:pl-72 flex flex-col min-h-screen">
+        {tzPrompt ? (
+          <div className="fixed top-16 left-0 lg:left-72 right-0 z-30 bg-surface-container-high border-b border-outline/30 px-space-lg py-space-sm flex flex-wrap items-center justify-between gap-space-sm">
+            <span className="text-body-sm text-on-surface">
+              Your timezone looks like <strong>{tzPrompt}</strong>. Use it for reminders and briefs?
+            </span>
+            <div className="flex gap-space-sm">
+              <button
+                type="button"
+                className="text-sm text-primary font-semibold"
+                onClick={() => {
+                  void (async () => {
+                    try {
+                      await updateSettings({ timezone: tzPrompt });
+                      setTzPrompt(null);
+                    } catch {
+                      /* user can open settings */
+                    }
+                  })();
+                }}
+              >
+                Yes
+              </button>
+              <button
+                type="button"
+                className="text-sm text-on-surface-variant"
+                onClick={() => {
+                  localStorage.setItem(TZ_PROMPT_DISMISS_KEY, "1");
+                  setTzPrompt(null);
+                }}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <header className="fixed top-0 left-0 lg:left-72 right-0 h-16 bg-surface-container-lowest/90 backdrop-blur-2xl z-40 flex items-center justify-between px-space-lg shadow-[0_1px_8px_rgba(0,0,0,0.4)]">
           <div className="flex items-center gap-space-sm">
             <span className="h-2 w-2 rounded-full bg-primary-container shadow-[0_0_8px_rgba(25,227,255,0.9)]" />

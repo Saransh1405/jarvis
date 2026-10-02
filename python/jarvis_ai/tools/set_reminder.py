@@ -4,6 +4,7 @@ from typing import Any
 from jarvis_ai.policy.policy import Tier
 from jarvis_ai.tools.base import Tool
 from jarvis_ai.tools.context import ToolContext
+from jarvis_ai.user_settings.formatting import format_datetime_local
 
 
 def _parse_due_at(value: str) -> datetime:
@@ -35,7 +36,8 @@ async def _run_set_reminder(args: dict[str, Any], ctx: ToolContext) -> str:
         return "Error: due_at must be a valid ISO-8601 timestamp."
 
     reminder_id = await ctx.reminders.create(ctx.user_id, message, due_at)
-    return f"Reminder {reminder_id} set for {due_at.isoformat()}: {message}"
+    local_label = format_datetime_local(due_at, ctx.timezone)
+    return f"Reminder {reminder_id} set for {local_label} ({ctx.timezone}): {message}"
 
 
 def set_reminder_tool() -> Tool:

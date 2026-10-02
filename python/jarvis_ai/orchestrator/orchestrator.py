@@ -35,6 +35,9 @@ from jarvis_ai.tools.context import (
     ToolContext,
 )
 from jarvis_ai.tools.registry import ToolRegistry, build_default_registry
+from jarvis_ai.user_settings.formatting import format_datetime_local, now_local_iso
+from jarvis_ai.user_settings.models import UserSettings
+from jarvis_ai.user_settings.repository import UserSettingsStore
 
 HISTORY_MESSAGE_LIMIT = 40
 
@@ -107,6 +110,7 @@ class Orchestrator:
         pending_actions: PendingActionsStore | None = None,
         tool_logger: ToolCallLogStore | None = None,
         conversations: ConversationsStore | None = None,
+        user_settings: UserSettingsStore | None = None,
     ) -> None:
         self._settings = settings or Settings()
         self._llm = llm or create_llm_provider(self._settings)
@@ -118,6 +122,7 @@ class Orchestrator:
         self._pending_actions = pending_actions
         self._tool_logger = tool_logger
         self._conversations = conversations
+        self._user_settings = user_settings
 
     @property
     def llm(self) -> LLMProvider:
@@ -134,21 +139,40 @@ class Orchestrator:
     def _uses_persistence(self) -> bool:
         return self._conversations is not None
 
-    def _tool_context(self, user_id: str | None) -> ToolContext:
+    async def _user_settings_for(self, user_id: str | None) -> UserSettings:
+        if not user_id or self._user_settings is None:
+            return UserSettings()
+        return await self._user_settings.get(user_id)
+
+    def _tool_context(self, user_id: str | None, timezone: str = "UTC") -> ToolContext:
         return ToolContext(
             user_id=user_id,
+            timezone=timezone,
             notes=self._notes,
             reminders=self._reminders,
             memory=self._memory,
         )
 
-    async def _build_system_prompt(self, user_id: str | None, user_message: str) -> str:
+    async def _build_system_prompt(
+        self, user_id: str | None, user_message: str, user_cfg: UserSettings | None = None
+    ) -> str:
         sections = [DEFAULT_SYSTEM_PROMPT]
+        cfg = user_cfg if user_cfg is not None else await self._user_settings_for(user_id)
+        channel = cfg.preferred_channel or "web"
+        sections.append(
+            "User context:\n"
+            f"- timezone: {cfg.timezone}\n"
+            f"- now_local: {now_local_iso(cfg.timezone)}\n"
+            f"- channel: {channel}"
+        )
 
         if user_id and self._reminders is not None:
             due = await self._reminders.list_due(user_id)
             if due:
-                lines = [f"- {r.message} (due {r.due_at.isoformat()})" for r in due]
+                lines = [
+                    f"- {r.message} (due {format_datetime_local(r.due_at, cfg.timezone)})"
+                    for r in due
+                ]
                 sections.append("Due reminders for this user:\n" + "\n".join(lines))
 
         if user_id and self._memory is not None:
@@ -226,16 +250,18 @@ class Orchestrator:
         conversation_id: str | None,
         user_id: str | None,
     ):
+        user_cfg = await self._user_settings_for(user_id)
+        tool_ctx = self._tool_context(user_id, user_cfg.timezone)
         if not self._uses_persistence():
             conv_id = conversation_id or "conv-stub"
-            system_prompt = await self._build_system_prompt(user_id, message)
+            system_prompt = await self._build_system_prompt(user_id, message, user_cfg)
             result = await run_agent(
                 self._llm,
                 self._tools,
                 message,
                 policy=self._policy,
                 user_id=user_id,
-                tool_ctx=self._tool_context(user_id),
+                tool_ctx=tool_ctx,
                 system_prompt=system_prompt,
                 conversation_id=conv_id,
                 pending_store=self._pending_actions,
@@ -258,11 +284,11 @@ class Orchestrator:
         history = await self._conversations.list_messages(
             user_id, conv_id, limit=HISTORY_MESSAGE_LIMIT
         )
-        system_prompt = await self._build_system_prompt(user_id, message)
+        system_prompt = await self._build_system_prompt(user_id, message, user_cfg)
         llm_messages = stored_messages_to_llm(history, system_prompt)
         await self._conversations.append_message(user_id, conv_id, "user", message)
         llm_messages.append({"role": "user", "content": message})
-        ctx = self._tool_context(user_id)
+        ctx = tool_ctx
         shortcut = await _try_calculator_shortcut(
             message, self._tools, ctx, self._tool_logger
         )
@@ -302,7 +328,7 @@ class Orchestrator:
             llm_messages,
             policy=self._policy,
             user_id=user_id,
-            tool_ctx=self._tool_context(user_id),
+            tool_ctx=tool_ctx,
             conversation_id=conv_id,
             pending_store=self._pending_actions,
             tool_logger=self._tool_logger,
@@ -431,12 +457,13 @@ class Orchestrator:
         )
         messages = list(record.messages)
         resume_start = len(messages)
+        user_cfg = await self._user_settings_for(user_id)
         result = await resume_agent_after_approval(
             self._llm,
             self._tools,
             messages,
             approved_call,
-            self._tool_context(user_id),
+            self._tool_context(user_id, user_cfg.timezone),
             policy=self._policy,
             pending_store=self._pending_actions,
             conversation_id=record.conversation_id,

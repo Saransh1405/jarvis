@@ -116,7 +116,7 @@ async def _try_confirm_tool_shortcut(
             conversation_id,
         )
 
-    reminder_args = try_extract_set_reminder_args(user_message)
+    reminder_args = try_extract_set_reminder_args(user_message, timezone_name=ctx.timezone)
     if reminder_args and registry.get("set_reminder") is not None:
         return await _start_pending_tool(
             "set_reminder",
@@ -262,6 +262,7 @@ async def run_agent_with_messages(
     if user_id and ctx.user_id is None:
         ctx = ToolContext(
             user_id=user_id,
+            timezone=ctx.timezone,
             notes=ctx.notes,
             reminders=ctx.reminders,
             memory=ctx.memory,
@@ -300,6 +301,7 @@ async def run_agent(
     if user_id and ctx.user_id is None:
         ctx = ToolContext(
             user_id=user_id,
+            timezone=ctx.timezone,
             notes=ctx.notes,
             reminders=ctx.reminders,
             memory=ctx.memory,

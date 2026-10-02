@@ -42,7 +42,7 @@ def test_try_extract_calculator_expression_no_match(message: str) -> None:
 
 
 def test_try_extract_set_reminder_dentist_appointment() -> None:
-    args = try_extract_set_reminder_args("my dentist is on April 12 at 3pm")
+    args = try_extract_set_reminder_args("my dentist is on April 12 at 3pm", timezone_name="UTC")
     assert args is not None
     assert args["message"] == "Dentist appointment"
     assert args["due_at"].endswith("Z")

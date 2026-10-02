@@ -14,6 +14,7 @@ import (
 	"jarvis-go/internal/gateway/handlers"
 	"jarvis-go/internal/gateway/middleware"
 	"jarvis-go/internal/gateway/users"
+	"jarvis-go/internal/gateway/usersettings"
 	"jarvis-go/internal/observability"
 
 	"github.com/gin-gonic/gin"
@@ -31,6 +32,7 @@ type Server struct {
 type Options struct {
 	AuditRecorder audit.Recorder
 	Users         users.Store
+	UserSettings  usersettings.Store
 }
 
 // New builds a configured Gin engine and HTTP server.
@@ -62,7 +64,7 @@ func New(cfg *config.Config, logger *slog.Logger, redisClient *redis.Client, opt
 	}
 	engine.Use(middleware.Chain(deps)...)
 
-	handlers.RegisterRoutes(engine, cfg, redisClient, validator, opts.Users)
+	handlers.RegisterRoutes(engine, cfg, redisClient, validator, opts.Users, opts.UserSettings)
 
 	srv := &http.Server{
 		Addr:         cfg.Addr(),

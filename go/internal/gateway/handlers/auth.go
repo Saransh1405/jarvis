@@ -10,6 +10,7 @@ import (
 	"jarvis-go/internal/gateway/middleware"
 	"jarvis-go/internal/gateway/response"
 	"jarvis-go/internal/gateway/users"
+	"jarvis-go/internal/gateway/usersettings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -23,6 +24,7 @@ type LoginRequest struct {
 type SignupRequest struct {
 	Email    string `json:"email" validate:"required,email,max=254"`
 	Password string `json:"password" validate:"required,min=8,max=128"`
+	Timezone string `json:"timezone"`
 }
 
 type LoginResponse struct {
@@ -36,10 +38,11 @@ type AuthHandler struct {
 	cfg       *config.Config
 	validator *auth.Validator
 	users     users.Store
+	settings  usersettings.Store
 }
 
-func NewAuthHandler(cfg *config.Config, validator *auth.Validator, userStore users.Store) *AuthHandler {
-	return &AuthHandler{cfg: cfg, validator: validator, users: userStore}
+func NewAuthHandler(cfg *config.Config, validator *auth.Validator, userStore users.Store, settingsStore usersettings.Store) *AuthHandler {
+	return &AuthHandler{cfg: cfg, validator: validator, users: userStore, settings: settingsStore}
 }
 
 func (h *AuthHandler) Signup(c *gin.Context) {
@@ -67,6 +70,14 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 		}
 		response.InternalError(c)
 		return
+	}
+
+	if h.settings != nil {
+		tz := usersettings.NormalizeTimezone(req.Timezone)
+		if err := h.settings.EnsureDefaults(c.Request.Context(), userID, tz); err != nil {
+			response.InternalError(c)
+			return
+		}
 	}
 
 	h.respondWithToken(c, userID)

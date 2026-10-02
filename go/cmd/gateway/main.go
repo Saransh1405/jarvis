@@ -12,6 +12,7 @@ import (
 	"jarvis-go/internal/gateway/config"
 	"jarvis-go/internal/gateway/server"
 	"jarvis-go/internal/gateway/users"
+	"jarvis-go/internal/gateway/usersettings"
 )
 
 func main() {
@@ -47,6 +48,7 @@ func main() {
 	}
 
 	var userStore users.Store
+	var settingsStore usersettings.Store
 	var auditRecorder audit.Recorder = audit.NopRecorder{}
 
 	if cfg.PostgresDSN != "" {
@@ -60,6 +62,7 @@ func main() {
 		} else {
 			defer pgPool.Close()
 			userStore = users.NewRepository(pgPool)
+			settingsStore = usersettings.NewRepository(pgPool)
 			logger.Info("database auth enabled")
 			if cfg.AuditLogEnabled {
 				auditRecorder = audit.NewPostgresRecorder(pgPool, logger)
@@ -74,6 +77,7 @@ func main() {
 	srv, err := server.New(cfg, logger, redisClient, server.Options{
 		AuditRecorder: auditRecorder,
 		Users:         userStore,
+		UserSettings:  settingsStore,
 	})
 	if err != nil {
 		logger.Error("server init failed", "error", err)

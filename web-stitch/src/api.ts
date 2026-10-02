@@ -33,6 +33,37 @@ export type ApproveChatResult = {
   tools_used?: string[] | null;
 };
 
+export type BriefSections = {
+  reminders: boolean;
+  calendar: boolean;
+  email: boolean;
+  weather: boolean;
+};
+
+export type UserSettings = {
+  user_id: string;
+  timezone: string;
+  locale: string;
+  preferred_channel: "web" | "telegram";
+  quiet_hours_start: string | null;
+  quiet_hours_end: string | null;
+  brief_enabled: boolean;
+  brief_time_local: string;
+  brief_sections: BriefSections;
+  feature_flags: Record<string, unknown>;
+};
+
+export type UserSettingsPatch = {
+  timezone?: string;
+  locale?: string;
+  preferred_channel?: "web" | "telegram";
+  quiet_hours_start?: string | null;
+  quiet_hours_end?: string | null;
+  brief_enabled?: boolean;
+  brief_time_local?: string;
+  brief_sections?: BriefSections;
+};
+
 type ApiErrorBody = {
   error?: { message?: string } | string;
   detail?: string;
@@ -76,24 +107,60 @@ export function apiErrorMessage(data: unknown, fallback: string): string {
   return fallback;
 }
 
+export function browserTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
 export async function authRequest(
   mode: AuthMode,
   email: string,
   password: string,
 ): Promise<{ access_token: string }> {
   const path = mode === "signup" ? "/api/v1/auth/signup" : "/api/v1/auth/login";
+  const body: Record<string, string> = { email, password };
+  if (mode === "signup") {
+    body.timezone = browserTimezone();
+  }
   const res = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify(body),
   });
   const data = await parseJSON(res);
   if (!res.ok) {
     throw new Error(apiErrorMessage(data, "Something went wrong. Try again."));
   }
-  const body = data as { access_token?: string };
-  if (!body.access_token) throw new Error("Invalid auth response");
-  return { access_token: body.access_token };
+  const tokenBody = data as { access_token?: string };
+  if (!tokenBody.access_token) throw new Error("Invalid auth response");
+  return { access_token: tokenBody.access_token };
+}
+
+export async function fetchSettings(): Promise<UserSettings> {
+  const res = await fetch("/api/v1/me/settings", { headers: authHeaders() });
+  const data = await parseJSON(res);
+  if (res.status === 401) throw new Error("unauthorized");
+  if (!res.ok) {
+    throw new Error(apiErrorMessage(data, "Could not load settings."));
+  }
+  return data as UserSettings;
+}
+
+export async function updateSettings(patch: UserSettingsPatch): Promise<UserSettings> {
+  const res = await fetch("/api/v1/me/settings", {
+    method: "PATCH",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(patch),
+  });
+  const data = await parseJSON(res);
+  if (res.status === 401) throw new Error("unauthorized");
+  if (!res.ok) {
+    throw new Error(apiErrorMessage(data, "Could not save settings."));
+  }
+  return data as UserSettings;
 }
 
 export function dayGroup(iso: string): string {

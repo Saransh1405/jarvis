@@ -21,6 +21,7 @@ from jarvis_ai.observability.tool_log import NoOpToolCallLogger, ToolCallLogger
 from jarvis_ai.orchestrator.orchestrator import Orchestrator
 from jarvis_ai.reminders.memory import InMemoryRemindersStore
 from jarvis_ai.reminders.repository import RemindersRepository
+from jarvis_ai.user_settings import InMemoryUserSettingsStore, UserSettingsRepository
 
 settings = Settings()
 
@@ -52,6 +53,7 @@ async def lifespan(app: FastAPI):
         memory = PostgresMemoryStore(pool)
         tool_logger = ToolCallLogger(pool)
         conversations = ConversationsRepository(pool)
+        user_settings = UserSettingsRepository(pool)
     else:
         notes = InMemoryNotesStore()
         pending = InMemoryPendingActionsStore()
@@ -59,6 +61,7 @@ async def lifespan(app: FastAPI):
         memory = InMemoryMemoryStore()
         tool_logger = NoOpToolCallLogger()
         conversations = None
+        user_settings = InMemoryUserSettingsStore()
 
     app.state.db_pool = pool
     app.state.orchestrator = Orchestrator(
@@ -69,6 +72,7 @@ async def lifespan(app: FastAPI):
         pending_actions=pending,
         tool_logger=tool_logger,
         conversations=conversations,
+        user_settings=user_settings,
     )
     yield
     if pool is not None:

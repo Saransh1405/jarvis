@@ -3,6 +3,9 @@
 import re
 from datetime import datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
+
+from jarvis_ai.user_settings.tz import resolve_zone
 
 # Matches: "calculate 2+2", "calc 99*101"
 _CALC_PREFIX = re.compile(r"^(?:calculate|calc)\s+(.+)$", re.IGNORECASE)
@@ -95,13 +98,32 @@ def _parse_clock_hour(hour: int, minute: int, ampm: str | None) -> tuple[int, in
     return hour, minute
 
 
-def _next_occurrence_utc(month: int, day: int, hour: int, minute: int) -> datetime:
-    now = datetime.now(timezone.utc)
-    year = now.year
-    due = datetime(year, month, day, hour, minute, tzinfo=timezone.utc)
-    if due < now:
-        due = datetime(year + 1, month, day, hour, minute, tzinfo=timezone.utc)
-    return due
+def _resolve_tz(timezone_name: str) -> ZoneInfo:
+    return resolve_zone(timezone_name)
+
+
+def _now_in_tz(tz: ZoneInfo, now: datetime | None) -> datetime:
+    if now is None:
+        return datetime.now(tz)
+    if now.tzinfo is None:
+        return now.replace(tzinfo=timezone.utc).astimezone(tz)
+    return now.astimezone(tz)
+
+
+def _next_occurrence_utc(
+    month: int,
+    day: int,
+    hour: int,
+    minute: int,
+    tz: ZoneInfo,
+    now: datetime | None = None,
+) -> datetime:
+    now_local = _now_in_tz(tz, now)
+    year = now_local.year
+    due_local = datetime(year, month, day, hour, minute, tzinfo=tz)
+    if due_local < now_local:
+        due_local = datetime(year + 1, month, day, hour, minute, tzinfo=tz)
+    return due_local.astimezone(timezone.utc)
 
 
 def _parse_month_day_time(
@@ -110,6 +132,8 @@ def _parse_month_day_time(
     hour_str: str | None,
     min_str: str | None,
     ampm: str | None,
+    tz: ZoneInfo,
+    now: datetime | None = None,
 ) -> str | None:
     month = _MONTHS.get(month_name.lower())
     if not month:
@@ -118,7 +142,7 @@ def _parse_month_day_time(
     hour = int(hour_str) if hour_str else 9
     minute = int(min_str) if min_str else 0
     hour, minute = _parse_clock_hour(hour, minute, ampm)
-    due = _next_occurrence_utc(month, day, hour, minute)
+    due = _next_occurrence_utc(month, day, hour, minute, tz, now=now)
     return due.isoformat().replace("+00:00", "Z")
 
 
@@ -131,17 +155,21 @@ def try_extract_save_note_content(message: str) -> str | None:
     return content or None
 
 
-def try_extract_set_reminder_args(message: str) -> dict[str, Any] | None:
+def try_extract_set_reminder_args(
+    message: str,
+    timezone_name: str = "UTC",
+    now: datetime | None = None,
+) -> dict[str, Any] | None:
     """
     Build set_reminder arguments from natural language (no LLM required).
 
-    Examples:
-      - "my dentist is on April 12 at 3pm"
-      - "Remind me to call mom on October 3, 2026 at 9:00 AM"
+    Wall-clock times are interpreted in the user's timezone, stored as UTC ISO.
     """
     text = message.strip()
     if not text:
         return None
+
+    tz = _resolve_tz(timezone_name)
 
     appt = _APPT_IS_ON.match(text)
     if appt:
@@ -152,6 +180,8 @@ def try_extract_set_reminder_args(message: str) -> dict[str, Any] | None:
             appt.group(4),
             appt.group(5),
             appt.group(6),
+            tz,
+            now=now,
         )
         if not due_at:
             return None
@@ -172,7 +202,8 @@ def try_extract_set_reminder_args(message: str) -> dict[str, Any] | None:
             year, mon, day = int(iso_match.group(1)), int(iso_match.group(2)), int(iso_match.group(3))
             hour = int(iso_match.group(4)) if iso_match.group(4) else 9
             minute = int(iso_match.group(5)) if iso_match.group(5) else 0
-            due = datetime(year, mon, day, hour, minute, tzinfo=timezone.utc)
+            due_local = datetime(year, mon, day, hour, minute, tzinfo=tz)
+            due = due_local.astimezone(timezone.utc)
             return {"message": body, "due_at": due.isoformat().replace("+00:00", "Z")}
 
         month_day = re.match(
@@ -189,6 +220,8 @@ def try_extract_set_reminder_args(message: str) -> dict[str, Any] | None:
                 month_day.group(3),
                 month_day.group(4),
                 month_day.group(5),
+                tz,
+                now=now,
             )
             if due_at:
                 return {"message": body, "due_at": due_at}

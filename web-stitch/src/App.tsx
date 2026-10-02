@@ -3,8 +3,9 @@ import { clearToken, fetchConversations, getToken } from "./api";
 import { AuthView } from "./components/AuthView";
 import { CommandCoreView } from "./components/CommandCoreView";
 import { LandingView } from "./components/LandingView";
+import { SettingsView } from "./components/SettingsView";
 
-type Screen = "landing" | "auth" | "chat";
+type Screen = "landing" | "auth" | "chat" | "settings";
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>("landing");
@@ -47,5 +48,22 @@ export default function App() {
     );
   }
 
-  return <CommandCoreView onLogout={() => setScreen("landing")} />;
+  if (screen === "settings") {
+    return (
+      <SettingsView
+        onBack={() => setScreen("chat")}
+        onLogout={() => {
+          clearToken();
+          setScreen("landing");
+        }}
+      />
+    );
+  }
+
+  return (
+    <CommandCoreView
+      onLogout={() => setScreen("landing")}
+      onOpenSettings={() => setScreen("settings")}
+    />
+  );
 }

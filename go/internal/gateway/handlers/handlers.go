@@ -6,6 +6,7 @@ import (
 	"jarvis-go/internal/gateway/config"
 	"jarvis-go/internal/gateway/proxy"
 	"jarvis-go/internal/gateway/users"
+	"jarvis-go/internal/gateway/usersettings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -16,10 +17,12 @@ func RegisterRoutes(
 	redisClient *redis.Client,
 	validator *auth.Validator,
 	userStore users.Store,
+	settingsStore usersettings.Store,
 ) {
 	health := &HealthHandler{}
 	ready := &ReadyHandler{Redis: redisClient}
-	authHandler := NewAuthHandler(cfg, validator, userStore)
+	authHandler := NewAuthHandler(cfg, validator, userStore, settingsStore)
+	settingsHandler := NewSettingsHandler(settingsStore)
 	chatProxy := proxy.NewClient(cfg.PythonAPIURL)
 
 	engine.GET("/health", health.Live)
@@ -30,6 +33,8 @@ func RegisterRoutes(
 	{
 		api.POST("/auth/signup", authHandler.Signup)
 		api.POST("/auth/login", authHandler.Login)
+		api.GET("/me/settings", settingsHandler.Get)
+		api.PATCH("/me/settings", settingsHandler.Patch)
 
 		api.GET("/status", func(c *gin.Context) {
 			c.JSON(200, gin.H{

@@ -57,6 +57,7 @@ class ToolContext:
     """Identity and services available during tool execution."""
 
     user_id: str | None = None
+    timezone: str = "UTC"
     notes: NotesStore | None = None
     reminders: RemindersStore | None = None
     memory: MemoryStore | None = None
