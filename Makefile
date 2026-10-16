@@ -23,7 +23,7 @@ down:
 	$(COMPOSE) $(COMPOSE_FILES) down
 
 build:
-	$(COMPOSE) $(COMPOSE_FILES) build
+	$(COMPOSE) $(COMPOSE_DEV_FILES) build
 
 logs:
 	$(COMPOSE) $(COMPOSE_FILES) logs -f

@@ -23,12 +23,18 @@ services:
       - "${PYTHON_API_PORT:-8000}:8000"
 
   worker:
+    build:
+      context: ../python
+      dockerfile: Dockerfile
     volumes:
       - ../python/jarvis_ai:/app/jarvis_ai:ro
     environment:
       PYTHONPATH: /install/lib/python3.12/site-packages:/app
 
   gateway:
+    build:
+      context: ../go
+      dockerfile: Dockerfile
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
 
