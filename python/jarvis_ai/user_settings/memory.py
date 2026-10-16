@@ -17,3 +17,10 @@ class InMemoryUserSettingsStore:
     async def set_preferred_channel(self, user_id: str, channel: str) -> None:
         current = await self.get(user_id)
         current.preferred_channel = channel
+
+    async def list_brief_enabled(self) -> list[tuple[str, UserSettings]]:
+        return [
+            (user_id, settings)
+            for user_id, settings in self._by_user.items()
+            if settings.brief_enabled
+        ]

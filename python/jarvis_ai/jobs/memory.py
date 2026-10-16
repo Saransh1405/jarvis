@@ -29,6 +29,13 @@ class InMemoryJobQueue:
         if dedupe_key:
             for existing in self.jobs.values():
                 if existing.dedupe_key == dedupe_key:
+                    if existing.status == "cancelled":
+                        existing.status = "scheduled"
+                        existing.run_at = _aware(run_at)
+                        existing.payload = dict(payload or {})
+                        existing.attempts = 0
+                        existing.locked_until = None
+                        existing.last_error = None
                     return existing
         job = ScheduledJob(
             id=str(uuid4()),
@@ -78,6 +85,12 @@ class InMemoryJobQueue:
             return
         current.status = "scheduled"
         current.run_at = moment + timedelta(seconds=backoff_seconds(current.attempts))
+
+    async def has_pending(self, *, kind: str, user_id: str) -> bool:
+        return any(
+            job.kind == kind and job.user_id == user_id and job.status in ("scheduled", "running")
+            for job in self.jobs.values()
+        )
 
     async def cancel_by_dedupe(self, dedupe_key: str) -> None:
         for job in self.jobs.values():

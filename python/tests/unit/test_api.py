@@ -1,9 +1,11 @@
+import asyncio
 import json
 
 import pytest
 from fastapi.testclient import TestClient
 
 from jarvis_ai.api.main import app
+from jarvis_ai.notify.memory import InMemoryNotificationLog
 
 
 @pytest.fixture
@@ -35,6 +37,36 @@ def test_chat_calculator_via_api(client: TestClient) -> None:
     assert "9999" in data["message"]
     assert data["tools_used"] == ["calculator"]
     assert data["source"] == "agent:calculator"
+
+
+def test_notifications_are_listed_for_the_requesting_user(client: TestClient) -> None:
+    log = InMemoryNotificationLog()
+    asyncio.run(
+        log.insert(
+            user_id="user-1",
+            kind="reminder",
+            channel="web",
+            status="sent",
+            body="call mom",
+        )
+    )
+    asyncio.run(
+        log.insert(
+            user_id="user-2",
+            kind="reminder",
+            channel="web",
+            status="sent",
+            body="secret",
+        )
+    )
+    app.state.notifications = log
+    resp = client.get("/api/v1/notifications", headers={"X-User-ID": "user-1"})
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert len(rows) == 1
+    assert rows[0]["body"] == "call mom"
+    assert rows[0]["kind"] == "reminder"
+    app.state.notifications = None
 
 
 def test_chat_stream_stub(client: TestClient) -> None:

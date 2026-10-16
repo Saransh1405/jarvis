@@ -48,6 +48,9 @@ func (p *Client) doForward(c *gin.Context, backendPath string, stream bool) {
 		return
 	}
 
+	if c.Request.URL.RawQuery != "" && !strings.Contains(backendPath, "?") {
+		backendPath += "?" + c.Request.URL.RawQuery
+	}
 	url := p.baseURL + backendPath
 	req, err := http.NewRequestWithContext(c.Request.Context(), c.Request.Method, url, bytes.NewReader(body))
 	if err != nil {

@@ -1,7 +1,7 @@
 """Agent loop — LLM picks tools, orchestrator runs them, LLM answers."""
 
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from jarvis_ai.llm.agent_types import AgentTurn, ToolCall
@@ -260,13 +260,7 @@ async def run_agent_with_messages(
     engine = policy or PolicyEngine()
     ctx = tool_ctx or ToolContext(user_id=user_id)
     if user_id and ctx.user_id is None:
-        ctx = ToolContext(
-            user_id=user_id,
-            timezone=ctx.timezone,
-            notes=ctx.notes,
-            reminders=ctx.reminders,
-            memory=ctx.memory,
-        )
+        ctx = replace(ctx, user_id=user_id)
     tools_used: list[str] = []
     return await _agent_loop(
         llm,
@@ -299,13 +293,7 @@ async def run_agent(
     engine = policy or PolicyEngine()
     ctx = tool_ctx or ToolContext(user_id=user_id)
     if user_id and ctx.user_id is None:
-        ctx = ToolContext(
-            user_id=user_id,
-            timezone=ctx.timezone,
-            notes=ctx.notes,
-            reminders=ctx.reminders,
-            memory=ctx.memory,
-        )
+        ctx = replace(ctx, user_id=user_id)
     messages = initial_messages(user_message, system=system_prompt)
     tools_used: list[str] = []
     shortcut = await _try_calculator_shortcut(user_message, registry, ctx, tool_logger)

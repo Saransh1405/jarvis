@@ -34,23 +34,27 @@ def test_registry_llm_schemas() -> None:
     names = {schema["function"]["name"] for schema in schemas}
     assert names == {
         "calculator",
+        "cancel_reminder",
         "get_note",
         "list_reminders",
         "remember_fact",
         "save_note",
         "search_memory",
         "set_reminder",
+        "snooze_reminder",
     }
 
 
 EXPECTED_TOOL_TIERS: dict[str, Tier] = {
     "calculator": Tier.SAFE,
+    "cancel_reminder": Tier.CONFIRM_REQUIRED,
     "get_note": Tier.SAFE,
     "list_reminders": Tier.SAFE,
     "remember_fact": Tier.SAFE,
     "search_memory": Tier.SAFE,
     "save_note": Tier.CONFIRM_REQUIRED,
     "set_reminder": Tier.CONFIRM_REQUIRED,
+    "snooze_reminder": Tier.SAFE,
 }
 
 

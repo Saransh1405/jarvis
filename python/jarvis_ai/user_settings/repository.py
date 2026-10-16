@@ -80,6 +80,32 @@ class UserSettingsRepository:
             channel,
         )
 
+    async def list_brief_enabled(self) -> list[tuple[str, UserSettings]]:
+        try:
+            rows = await self._pool.fetch(
+                """
+                SELECT
+                    user_id::text AS user_id,
+                    timezone,
+                    locale,
+                    preferred_channel,
+                    to_char(quiet_hours_start, 'HH24:MI') AS quiet_hours_start,
+                    to_char(quiet_hours_end, 'HH24:MI') AS quiet_hours_end,
+                    brief_enabled,
+                    to_char(brief_time_local, 'HH24:MI') AS brief_time_local,
+                    brief_sections,
+                    feature_flags
+                FROM user_settings
+                WHERE brief_enabled = TRUE
+                """
+            )
+        except asyncpg.UndefinedTableError:
+            return []
+        except Exception:
+            logger.exception("failed to list brief users")
+            return []
+        return [(str(row["user_id"]), _row_to_settings(row)) for row in rows]
+
 
 def _row_to_settings(record: asyncpg.Record) -> UserSettings:
     brief_sections = default_brief_sections()

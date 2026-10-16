@@ -65,3 +65,12 @@ class InMemoryPendingActionsStore:
             created_at=record.created_at,
         )
         return True
+
+    async def list_pending(self, user_id: str, limit: int = 10) -> list[PendingActionRecord]:
+        rows = [
+            record
+            for record in self._items.values()
+            if record.user_id == user_id and record.status == "pending"
+        ]
+        rows.sort(key=lambda record: record.created_at)
+        return rows[:limit]

@@ -23,12 +23,18 @@ def parse_command(text: str) -> tuple[str, str] | None:
     return name, rest.strip()
 
 
+# Longer prefixes first so s10/s60 are not read as a single-letter kind.
+_CALLBACK_KINDS = ("s10", "s60", "st", "a", "r", "d")
+
+
 def parse_callback(data: str) -> tuple[str, str] | None:
-    """Return ('a'|'r', action_id) for approve/reject callbacks. Anything else is ignored."""
-    if len(data) < 3 or data[1] != ":":
-        return None
-    kind = data[0]
-    action_id = data[2:]
-    if kind not in ("a", "r") or _UUID.match(action_id) is None:
-        return None
-    return kind, action_id
+    """Return (kind, id) for approve, reject, done, and snooze callbacks."""
+    for kind in _CALLBACK_KINDS:
+        prefix = f"{kind}:"
+        if not data.startswith(prefix):
+            continue
+        target_id = data[len(prefix) :]
+        if _UUID.match(target_id) is None:
+            return None
+        return kind, target_id
+    return None

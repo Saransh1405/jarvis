@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from jarvis_ai.channels.base import Button, OutboundMessage, UserChannel
 from jarvis_ai.channels.limits import SlidingWindowLimiter
 from jarvis_ai.channels.parse import hash_link_token, parse_callback, parse_command
+from jarvis_ai.reminders.actions import complete_reminder, snooze_reminder
 from jarvis_ai.user_settings.formatting import format_datetime_local
 from jarvis_ai.user_settings.tz import canonical_timezone
 
@@ -23,6 +24,7 @@ HELP_TEXT = (
     "I can chat, take notes, and set reminders.\n\n"
     "/new — start a fresh conversation\n"
     "/reminders — list upcoming reminders\n"
+    "/brief — send today's brief now\n"
     "/notes — recent notes\n"
     "/timezone Asia/Kolkata — set your timezone\n"
     "/settings — show current settings\n"
@@ -45,6 +47,8 @@ class TelegramService:
         bot_username: str,
         feature_enabled: bool = True,
         clock=None,
+        jobs=None,
+        briefs=None,
     ) -> None:
         self._channels = channels
         self._conversations = conversations
@@ -53,6 +57,8 @@ class TelegramService:
         self._settings = settings_store
         self._notes = notes
         self._reminders = reminders
+        self._jobs = jobs
+        self._briefs = briefs
         self._bot_username = bot_username.lstrip("@")
         self._feature_enabled = feature_enabled
         self._clock = clock or (lambda: datetime.now(timezone.utc))
@@ -198,7 +204,9 @@ class TelegramService:
             return await self._reminders_list(row.user_id)
         if name == "/notes":
             return await self._notes_list(row.user_id)
-        if name in ("/brief", "/memory", "/forget"):
+        if name == "/brief":
+            return await self._brief(row.user_id)
+        if name in ("/memory", "/forget"):
             return OutboundMessage(text="That arrives in a later update.", format="plain")
         return OutboundMessage(text=HELP_TEXT, format="plain")
 
@@ -294,6 +302,11 @@ class TelegramService:
             await self._answer(callback_id, "Unknown action.")
             return
         kind, action_id = parsed
+        if kind in ("d", "s10", "s60", "st"):
+            await self._handle_reminder_callback(
+                kind, action_id, row.user_id, callback_id, message_id, external_id
+            )
+            return
         if kind == "a":
             result = await self._orchestrator.approve_action(action_id, row.user_id)
         else:
@@ -312,6 +325,49 @@ class TelegramService:
             return
         await self._answer(callback_id)
         outcome = str(result.get("message") or "Done.")
+        if isinstance(message_id, int) and self._telegram is not None:
+            await self._telegram.edit_message(external_id, message_id, outcome)
+
+    async def _brief(self, user_id: str) -> OutboundMessage:
+        if self._briefs is None:
+            return OutboundMessage(text="The morning brief is not available yet.", format="plain")
+        result = await self._briefs.run(user_id, now=self._now(), immediate=True)
+        if result.channel == "telegram" and result.status in ("sent", "deduped"):
+            return OutboundMessage(text="Sent your morning brief.", format="plain")
+        if result.status == "failed":
+            return OutboundMessage(text="I couldn't send the brief. Try again in a minute.", format="plain")
+        return OutboundMessage(text=result.text or "Nothing due today.", format="plain")
+
+    async def _handle_reminder_callback(
+        self,
+        kind: str,
+        reminder_id: str,
+        user_id: str,
+        callback_id: str,
+        message_id,
+        external_id: str,
+    ) -> None:
+        if self._reminders is None:
+            await self._answer(callback_id, "Reminders are unavailable.")
+            return
+        reminder = await self._reminders.get_for_user(user_id, reminder_id)
+        if reminder is None:
+            await self._answer(callback_id, "That reminder is not yours.")
+            return
+        if kind == "d":
+            outcome = await complete_reminder(self._reminders, self._jobs, reminder)
+        else:
+            outcome = await snooze_reminder(
+                self._reminders,
+                self._jobs,
+                reminder,
+                kind=kind,
+                now=self._now(),
+            )
+        if outcome.startswith("Error:"):
+            await self._answer(callback_id, "Couldn't update that reminder.")
+            return
+        await self._answer(callback_id)
         if isinstance(message_id, int) and self._telegram is not None:
             await self._telegram.edit_message(external_id, message_id, outcome)
 

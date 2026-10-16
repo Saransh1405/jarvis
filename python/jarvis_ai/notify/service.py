@@ -62,6 +62,7 @@ class NotifyService:
             status="queued",
             dedupe_key=dedupe_key,
             ref_id=ref_id,
+            body=message.text,
         )
         if notification_id is None:
             return NotifyResult(status="deduped", channel=channel_name)
@@ -114,6 +115,7 @@ class NotifyService:
             status="queued",
             dedupe_key=None,
             ref_id=ref_id,
+            body=message.text,
         )
         if notification_id is None:
             return NotifyResult(status="failed", channel="web", error="fallback insert failed")

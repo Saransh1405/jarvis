@@ -85,6 +85,27 @@ class JobsRepository:
                 dedupe_key,
             )
             assert existing is not None
+            if str(existing["status"]) == "cancelled":
+                revived = await self._pool.fetchrow(
+                    """
+                    UPDATE scheduled_jobs
+                    SET status = 'scheduled',
+                        run_at = $2,
+                        payload = $3::jsonb,
+                        attempts = 0,
+                        locked_until = NULL,
+                        last_error = NULL,
+                        updated_at = NOW()
+                    WHERE id = $1::uuid
+                    RETURNING id, kind, user_id, run_at, payload, status, attempts, max_attempts,
+                              locked_until, last_error, dedupe_key
+                    """,
+                    str(existing["id"]),
+                    run_at,
+                    json.dumps(payload or {}),
+                )
+                assert revived is not None
+                return _row_to_job(revived)
             return _row_to_job(existing)
         assert row is not None
         return _row_to_job(row)
@@ -133,6 +154,28 @@ class JobsRepository:
             run_at,
             error[:500],
         )
+
+    async def cancel_by_dedupe(self, dedupe_key: str) -> None:
+        await self._pool.execute(
+            """
+            UPDATE scheduled_jobs
+            SET status = 'cancelled', locked_until = NULL, updated_at = NOW()
+            WHERE dedupe_key = $1 AND status IN ('scheduled', 'running')
+            """,
+            dedupe_key,
+        )
+
+    async def has_pending(self, *, kind: str, user_id: str) -> bool:
+        found = await self._pool.fetchval(
+            """
+            SELECT 1 FROM scheduled_jobs
+            WHERE kind = $1 AND user_id = $2 AND status IN ('scheduled', 'running')
+            LIMIT 1
+            """,
+            kind,
+            user_id,
+        )
+        return found is not None
 
     async def heartbeat(self, worker_id: str = "default") -> None:
         await self._pool.execute(

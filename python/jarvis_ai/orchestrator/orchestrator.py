@@ -119,6 +119,7 @@ class Orchestrator:
         tool_logger: ToolCallLogStore | None = None,
         conversations: ConversationsStore | None = None,
         user_settings: UserSettingsStore | None = None,
+        jobs=None,
     ) -> None:
         self._settings = settings or Settings()
         self._llm = llm or create_llm_provider(self._settings)
@@ -131,6 +132,7 @@ class Orchestrator:
         self._tool_logger = tool_logger
         self._conversations = conversations
         self._user_settings = user_settings
+        self._jobs = jobs
 
     @property
     def llm(self) -> LLMProvider:
@@ -159,6 +161,7 @@ class Orchestrator:
             notes=self._notes,
             reminders=self._reminders,
             memory=self._memory,
+            jobs=self._jobs,
         )
 
     async def _build_system_prompt(

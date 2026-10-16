@@ -88,6 +88,21 @@ class PendingActionsRepository:
             )
         return result.endswith("1")
 
+    async def list_pending(self, user_id: str, limit: int = 10) -> list[PendingActionRecord]:
+        rows = await self._pool.fetch(
+            """
+            SELECT id::text, user_id, conversation_id, tool_call_id, tool_name,
+                   arguments, messages, status, created_at
+            FROM pending_actions
+            WHERE user_id = $1 AND status = 'pending'
+            ORDER BY created_at ASC
+            LIMIT $2
+            """,
+            user_id,
+            limit,
+        )
+        return [_row_to_record(row) for row in rows]
+
 
 def _row_to_record(row: asyncpg.Record) -> PendingActionRecord:
     args = row["arguments"]

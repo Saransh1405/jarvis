@@ -4,6 +4,7 @@ from typing import Any
 
 from jarvis_ai.tools.base import Tool
 from jarvis_ai.tools.calculator import calculator_tool
+from jarvis_ai.tools.cancel_reminder import cancel_reminder_tool
 from jarvis_ai.tools.context import ToolContext
 from jarvis_ai.tools.get_note import get_note_tool
 from jarvis_ai.tools.list_reminders import list_reminders_tool
@@ -11,6 +12,7 @@ from jarvis_ai.tools.remember_fact import remember_fact_tool
 from jarvis_ai.tools.save_note import save_note_tool
 from jarvis_ai.tools.search_memory import search_memory_tool
 from jarvis_ai.tools.set_reminder import set_reminder_tool
+from jarvis_ai.tools.snooze_reminder import snooze_reminder_tool
 
 
 class ToolNotFoundError(KeyError):
@@ -56,6 +58,8 @@ def build_default_registry() -> ToolRegistry:
     registry.register(get_note_tool())
     registry.register(set_reminder_tool())
     registry.register(list_reminders_tool())
+    registry.register(cancel_reminder_tool())
+    registry.register(snooze_reminder_tool())
     registry.register(remember_fact_tool())
     registry.register(search_memory_tool())
     return registry

@@ -15,6 +15,8 @@ DEFAULT_SYSTEM_PROMPT = (
     "When they ask to be reminded at a specific date or time, use set_reminder with "
     "message and due_at as ISO-8601 UTC. Interpret dates and times in the user's "
     "timezone from the user context block (convert to UTC for due_at). "
+    "If they want it to repeat, set recurrence to exactly one of daily, weekdays, "
+    "weekly, or monthly. For any other repeat pattern, ask which of those four they want. "
     "Do not claim a note or reminder was saved until the user approves the action in the app. "
     "Do not use remember_fact for timed reminders; use set_reminder instead."
 )

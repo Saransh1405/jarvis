@@ -16,6 +16,7 @@ class InMemoryNotificationLog:
         dedupe_key: str | None = None,
         ref_id: str | None = None,
         error: str | None = None,
+        body: str | None = None,
     ) -> str | None:
         if dedupe_key and status in ("queued", "sent"):
             for row in self.rows:
@@ -32,10 +33,17 @@ class InMemoryNotificationLog:
                 "dedupe_key": dedupe_key,
                 "ref_id": ref_id,
                 "error": error,
+                "body": body,
+                "created_at": datetime.now(timezone.utc),
                 "sent_at": datetime.now(timezone.utc) if status == "sent" else None,
             }
         )
         return row_id
+
+    async def list_for_user(self, user_id: str, limit: int = 50) -> list[dict]:
+        rows = [row for row in self.rows if row["user_id"] == user_id]
+        rows.sort(key=lambda row: row["created_at"], reverse=True)
+        return rows[:limit]
 
     async def mark(self, notification_id: str, status: str, error: str | None = None) -> None:
         for row in self.rows:

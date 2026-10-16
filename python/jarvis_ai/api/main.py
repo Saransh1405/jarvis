@@ -5,26 +5,23 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import asyncpg
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from jarvis_ai.actions.memory import InMemoryPendingActionsStore
 from jarvis_ai.actions.repository import PendingActionsRepository
-from jarvis_ai.channels.repository import ChannelsRepository
 from jarvis_ai.channels.routes import router as channel_router
 from jarvis_ai.channels.service import TelegramService
-from jarvis_ai.channels.telegram_api import HttpxTelegramClient, TelegramAdapter
-from jarvis_ai.channels.web import WebAdapter
 from jarvis_ai.config.settings import Settings
+from jarvis_ai.delivery import build_delivery_stack
 from jarvis_ai.conversations import ConversationsRepository, InMemoryConversationsStore
 from jarvis_ai.db import create_pool, run_migrations
 from jarvis_ai.memory.store import InMemoryMemoryStore, PostgresMemoryStore
 from jarvis_ai.notes.memory import InMemoryNotesStore
 from jarvis_ai.notes.repository import NotesRepository
 from jarvis_ai.observability.tool_log import NoOpToolCallLogger, ToolCallLogger
-from jarvis_ai.notify.repository import NotificationsRepository
-from jarvis_ai.notify.service import NotifyService
+from jarvis_ai.jobs.memory import InMemoryJobQueue
 from jarvis_ai.orchestrator.orchestrator import Orchestrator
 from jarvis_ai.reminders.memory import InMemoryRemindersStore
 from jarvis_ai.reminders.repository import RemindersRepository
@@ -50,6 +47,7 @@ _configure_logging()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     pool: asyncpg.Pool | None = None
+    stack = None
 
     if settings.database_url:
         pool = await create_pool(settings.database_url)
@@ -61,6 +59,8 @@ async def lifespan(app: FastAPI):
         tool_logger = ToolCallLogger(pool)
         conversations = ConversationsRepository(pool)
         user_settings = UserSettingsRepository(pool)
+        stack = build_delivery_stack(pool, settings, user_settings, reminders, pending)
+        jobs = stack.jobs
     else:
         notes = InMemoryNotesStore()
         pending = InMemoryPendingActionsStore()
@@ -69,9 +69,11 @@ async def lifespan(app: FastAPI):
         tool_logger = NoOpToolCallLogger()
         conversations = None
         user_settings = InMemoryUserSettingsStore()
+        jobs = InMemoryJobQueue()
 
     app.state.db_pool = pool
     app.state.settings = settings
+    app.state.notifications = stack.notifications if stack is not None else None
     app.state.orchestrator = Orchestrator(
         settings,
         notes=notes,
@@ -81,34 +83,26 @@ async def lifespan(app: FastAPI):
         tool_logger=tool_logger,
         conversations=conversations,
         user_settings=user_settings,
+        jobs=jobs,
     )
-    telegram_client: HttpxTelegramClient | None = None
+    telegram_client = stack.telegram_client if stack is not None else None
     app.state.telegram = None
-    app.state.notifier = None
-    if pool is not None:
-        channels = ChannelsRepository(pool)
-        adapters: dict = {"web": WebAdapter()}
-        telegram_adapter = None
-        if settings.telegram_bot_token:
-            telegram_client = HttpxTelegramClient(settings.telegram_bot_token)
-            telegram_adapter = TelegramAdapter(telegram_client)
-            adapters["telegram"] = telegram_adapter
-        app.state.notifier = NotifyService(
-            user_settings,
-            NotificationsRepository(pool),
-            adapters,
-            channels,
-        )
+    app.state.notifier = stack.notifier if stack is not None else None
+    if stack is not None:
+        from jarvis_ai.channels.repository import ChannelsRepository
+
         app.state.telegram = TelegramService(
-            channels=channels,
+            channels=ChannelsRepository(pool),
             conversations=conversations,
             orchestrator=app.state.orchestrator,
-            telegram=telegram_adapter,
+            telegram=stack.adapters.get("telegram"),
             settings_store=user_settings,
             notes=notes,
             reminders=reminders,
             bot_username=settings.telegram_bot_username,
             feature_enabled=settings.feature_telegram,
+            jobs=jobs,
+            briefs=stack.briefs,
         )
     yield
     if telegram_client is not None:
@@ -147,12 +141,58 @@ class ChatResponse(BaseModel):
     pending_action: PendingActionResponse | None = None
 
 
+class NotificationItem(BaseModel):
+    id: str
+    kind: str
+    channel: str
+    status: str
+    ref_id: str | None = None
+    error: str | None = None
+    body: str | None = None
+    created_at: str
+    sent_at: str | None = None
+
+
 class ActionStatusResponse(BaseModel):
     action_id: str
     status: str
     message: str | None = None
     tools_used: list[str] | None = None
     conversation_id: str | None = None
+
+
+def _iso(value) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+@app.get("/api/v1/notifications", response_model=list[NotificationItem])
+async def list_notifications(
+    x_user_id: str | None = Header(default=None, alias="X-User-ID"),
+    limit: int = Query(default=50, ge=1, le=100),
+) -> list[NotificationItem]:
+    user_id = require_user_id(x_user_id)
+    notifications = getattr(app.state, "notifications", None)
+    if notifications is None or not user_id:
+        return []
+    rows = await notifications.list_for_user(user_id, limit)
+    return [
+        NotificationItem(
+            id=row["id"],
+            kind=row["kind"],
+            channel=row["channel"],
+            status=row["status"],
+            ref_id=row.get("ref_id"),
+            error=row.get("error"),
+            body=row.get("body"),
+            created_at=_iso(row.get("created_at")) or "",
+            sent_at=_iso(row.get("sent_at")),
+        )
+        for row in rows
+    ]
 
 
 @app.get("/health")
