@@ -149,6 +149,42 @@ export async function fetchSettings(): Promise<UserSettings> {
   return data as UserSettings;
 }
 
+export type TelegramStatus = {
+  linked: boolean;
+  status: string | null;
+  username: string | null;
+};
+
+export async function fetchTelegramStatus(): Promise<TelegramStatus> {
+  const res = await fetch("/api/v1/channels/telegram", { headers: authHeaders() });
+  const data = await parseJSON(res);
+  if (res.status === 401) throw new Error("unauthorized");
+  if (!res.ok) throw new Error(apiErrorMessage(data, "Could not load Telegram status."));
+  return data as TelegramStatus;
+}
+
+export async function startTelegramLink(): Promise<{ url: string; expires_at: string }> {
+  const res = await fetch("/api/v1/channels/telegram/link", {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: "{}",
+  });
+  const data = await parseJSON(res);
+  if (res.status === 401) throw new Error("unauthorized");
+  if (!res.ok) throw new Error(apiErrorMessage(data, "Could not start Telegram linking."));
+  return data as { url: string; expires_at: string };
+}
+
+export async function disconnectTelegram(): Promise<void> {
+  const res = await fetch("/api/v1/channels/telegram", {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  const data = await parseJSON(res);
+  if (res.status === 401) throw new Error("unauthorized");
+  if (!res.ok) throw new Error(apiErrorMessage(data, "Could not disconnect Telegram."));
+}
+
 export async function updateSettings(patch: UserSettingsPatch): Promise<UserSettings> {
   const res = await fetch("/api/v1/me/settings", {
     method: "PATCH",

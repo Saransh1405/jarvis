@@ -9,3 +9,11 @@ class InMemoryUserSettingsStore:
         if user_id not in self._by_user:
             self._by_user[user_id] = UserSettings()
         return self._by_user[user_id]
+
+    async def update_timezone(self, user_id: str, timezone: str) -> None:
+        current = await self.get(user_id)
+        current.timezone = timezone
+
+    async def set_preferred_channel(self, user_id: str, channel: str) -> None:
+        current = await self.get(user_id)
+        current.preferred_channel = channel

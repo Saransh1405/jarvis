@@ -40,16 +40,43 @@ class ConversationsRepository:
     def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
 
-    async def create_conversation(self, user_id: str) -> str:
+    async def create_conversation(
+        self,
+        user_id: str,
+        *,
+        channel: str = "web",
+        channel_chat_id: str | None = None,
+    ) -> str:
         row = await self._pool.fetchrow(
             """
-            INSERT INTO conversations (user_id)
-            VALUES ($1)
+            INSERT INTO conversations (user_id, channel, channel_chat_id)
+            VALUES ($1, $2, $3)
             RETURNING id::text
             """,
             user_id,
+            channel,
+            channel_chat_id,
         )
         assert row is not None
+        return str(row["id"])
+
+    async def latest_channel_conversation(
+        self, user_id: str, channel: str, channel_chat_id: str
+    ) -> str | None:
+        row = await self._pool.fetchrow(
+            """
+            SELECT id::text
+            FROM conversations
+            WHERE user_id = $1 AND channel = $2 AND channel_chat_id = $3
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """,
+            user_id,
+            channel,
+            channel_chat_id,
+        )
+        if row is None:
+            return None
         return str(row["id"])
 
     async def get_conversation(self, user_id: str, conversation_id: str) -> Conversation | None:

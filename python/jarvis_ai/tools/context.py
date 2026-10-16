@@ -39,7 +39,9 @@ class PendingActionsStore(Protocol):
 
     async def get_for_user(self, action_id: str, user_id: str) -> Any | None: ...
 
-    async def set_status(self, action_id: str, user_id: str, status: str) -> bool: ...
+    async def set_status(
+        self, action_id: str, user_id: str, status: str, *, only_if: str | None = "pending"
+    ) -> bool: ...
 
 
 class ToolCallLogStore(Protocol):

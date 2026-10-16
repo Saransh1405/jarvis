@@ -1,6 +1,7 @@
 import json
 import re
 from collections.abc import AsyncIterator
+from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
 from jarvis_ai.config.settings import Settings
@@ -40,6 +41,13 @@ from jarvis_ai.user_settings.models import UserSettings
 from jarvis_ai.user_settings.repository import UserSettingsStore
 
 HISTORY_MESSAGE_LIMIT = 40
+PENDING_ACTION_TTL = timedelta(hours=24)
+
+
+def _action_expired(created_at: datetime, now: datetime | None = None) -> bool:
+    moment = now or datetime.now(timezone.utc)
+    created = created_at if created_at.tzinfo else created_at.replace(tzinfo=timezone.utc)
+    return moment - created.astimezone(timezone.utc) > PENDING_ACTION_TTL
 
 _MEMORY_STOP_WORDS = frozenset(
     {
@@ -154,17 +162,25 @@ class Orchestrator:
         )
 
     async def _build_system_prompt(
-        self, user_id: str | None, user_message: str, user_cfg: UserSettings | None = None
+        self,
+        user_id: str | None,
+        user_message: str,
+        user_cfg: UserSettings | None = None,
+        channel: str | None = None,
     ) -> str:
         sections = [DEFAULT_SYSTEM_PROMPT]
         cfg = user_cfg if user_cfg is not None else await self._user_settings_for(user_id)
-        channel = cfg.preferred_channel or "web"
+        active_channel = channel or cfg.preferred_channel or "web"
         sections.append(
             "User context:\n"
             f"- timezone: {cfg.timezone}\n"
             f"- now_local: {now_local_iso(cfg.timezone)}\n"
-            f"- channel: {channel}"
+            f"- channel: {active_channel}"
         )
+        if active_channel == "telegram":
+            sections.append(
+                "You are replying on Telegram. Keep answers short. Do not use wide tables."
+            )
 
         if user_id and self._reminders is not None:
             due = await self._reminders.list_due(user_id)
@@ -249,12 +265,15 @@ class Orchestrator:
         message: str,
         conversation_id: str | None,
         user_id: str | None,
+        channel: str | None = None,
     ):
         user_cfg = await self._user_settings_for(user_id)
         tool_ctx = self._tool_context(user_id, user_cfg.timezone)
         if not self._uses_persistence():
             conv_id = conversation_id or "conv-stub"
-            system_prompt = await self._build_system_prompt(user_id, message, user_cfg)
+            system_prompt = await self._build_system_prompt(
+                user_id, message, user_cfg, channel=channel
+            )
             result = await run_agent(
                 self._llm,
                 self._tools,
@@ -284,7 +303,9 @@ class Orchestrator:
         history = await self._conversations.list_messages(
             user_id, conv_id, limit=HISTORY_MESSAGE_LIMIT
         )
-        system_prompt = await self._build_system_prompt(user_id, message, user_cfg)
+        system_prompt = await self._build_system_prompt(
+            user_id, message, user_cfg, channel=channel
+        )
         llm_messages = stored_messages_to_llm(history, system_prompt)
         await self._conversations.append_message(user_id, conv_id, "user", message)
         llm_messages.append({"role": "user", "content": message})
@@ -374,9 +395,12 @@ class Orchestrator:
         message: str,
         conversation_id: str | None = None,
         user_id: str | None = None,
+        channel: str | None = None,
     ) -> dict:
         try:
-            conv_id, result = await self._run_chat_agent(message, conversation_id, user_id)
+            conv_id, result = await self._run_chat_agent(
+                message, conversation_id, user_id, channel=channel
+            )
         except (ValueError, LookupError) as exc:
             return self._chat_error_response(exc)
         except Exception as exc:
@@ -402,11 +426,14 @@ class Orchestrator:
         message: str,
         conversation_id: str | None = None,
         user_id: str | None = None,
+        channel: str | None = None,
     ) -> AsyncIterator[str]:
         yield json.dumps({"type": "status", "phase": "thinking"})
 
         try:
-            conv_id, result = await self._run_chat_agent(message, conversation_id, user_id)
+            conv_id, result = await self._run_chat_agent(
+                message, conversation_id, user_id, channel=channel
+            )
         except Exception as exc:
             err = self._chat_error_response(exc)
             yield json.dumps({"type": "error", "error": err["error"], "status_code": err["status_code"]})
@@ -449,6 +476,13 @@ class Orchestrator:
             return {"error": "action not found", "status_code": 404}
         if record.status != "pending":
             return {"error": f"action already {record.status}", "status_code": 409}
+        if _action_expired(record.created_at):
+            await self._pending_actions.set_status(action_id, user_id, "expired")
+            return {"error": "action expired", "status_code": 409}
+
+        claimed = await self._pending_actions.set_status(action_id, user_id, "executing")
+        if not claimed:
+            return {"error": "action already resolved", "status_code": 409}
 
         approved_call = ToolCall(
             id=record.tool_call_id,
@@ -458,18 +492,26 @@ class Orchestrator:
         messages = list(record.messages)
         resume_start = len(messages)
         user_cfg = await self._user_settings_for(user_id)
-        result = await resume_agent_after_approval(
-            self._llm,
-            self._tools,
-            messages,
-            approved_call,
-            self._tool_context(user_id, user_cfg.timezone),
-            policy=self._policy,
-            pending_store=self._pending_actions,
-            conversation_id=record.conversation_id,
-            tool_logger=self._tool_logger,
+        try:
+            result = await resume_agent_after_approval(
+                self._llm,
+                self._tools,
+                messages,
+                approved_call,
+                self._tool_context(user_id, user_cfg.timezone),
+                policy=self._policy,
+                pending_store=self._pending_actions,
+                conversation_id=record.conversation_id,
+                tool_logger=self._tool_logger,
+            )
+        except Exception:
+            await self._pending_actions.set_status(
+                action_id, user_id, "pending", only_if="executing"
+            )
+            raise
+        await self._pending_actions.set_status(
+            action_id, user_id, "executed", only_if="executing"
         )
-        await self._pending_actions.set_status(action_id, user_id, "executed")
 
         conv_id = record.conversation_id or "conv-stub"
         if self._conversations is not None and record.conversation_id:
@@ -497,8 +539,13 @@ class Orchestrator:
             return {"error": "action not found", "status_code": 404}
         if record.status != "pending":
             return {"error": f"action already {record.status}", "status_code": 409}
+        if _action_expired(record.created_at):
+            await self._pending_actions.set_status(action_id, user_id, "expired")
+            return {"error": "action expired", "status_code": 409}
 
-        await self._pending_actions.set_status(action_id, user_id, "rejected")
+        rejected = await self._pending_actions.set_status(action_id, user_id, "rejected")
+        if not rejected:
+            return {"error": "action already resolved", "status_code": 409}
         return {
             "action_id": action_id,
             "status": "rejected",

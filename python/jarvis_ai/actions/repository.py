@@ -55,17 +55,37 @@ class PendingActionsRepository:
             return None
         return _row_to_record(row)
 
-    async def set_status(self, action_id: str, user_id: str, status: str) -> bool:
-        result = await self._pool.execute(
-            """
-            UPDATE pending_actions
-            SET status = $3, updated_at = NOW()
-            WHERE id = $1::uuid AND user_id = $2 AND status = 'pending'
-            """,
-            action_id,
-            user_id,
-            status,
-        )
+    async def set_status(
+        self,
+        action_id: str,
+        user_id: str,
+        status: str,
+        *,
+        only_if: str | None = "pending",
+    ) -> bool:
+        if only_if is None:
+            result = await self._pool.execute(
+                """
+                UPDATE pending_actions
+                SET status = $3, updated_at = NOW()
+                WHERE id = $1::uuid AND user_id = $2
+                """,
+                action_id,
+                user_id,
+                status,
+            )
+        else:
+            result = await self._pool.execute(
+                """
+                UPDATE pending_actions
+                SET status = $3, updated_at = NOW()
+                WHERE id = $1::uuid AND user_id = $2 AND status = $4
+                """,
+                action_id,
+                user_id,
+                status,
+                only_if,
+            )
         return result.endswith("1")
 
 

@@ -10,6 +10,8 @@ class Conversation:
     title: str | None
     created_at: datetime
     updated_at: datetime
+    channel: str = "web"
+    channel_chat_id: str | None = None
 
 
 @dataclass(frozen=True)

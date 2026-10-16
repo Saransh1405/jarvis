@@ -39,6 +39,11 @@ func (c *Client) Close() error {
 	return c.inner.Close()
 }
 
+// SetNX stores key when it is absent. False means the key already existed.
+func (c *Client) SetNX(ctx context.Context, key, value string, ttl time.Duration) (bool, error) {
+	return c.inner.SetNX(ctx, key, value, ttl).Result()
+}
+
 // Allow checks a token-bucket style rate limit key in Redis.
 // Returns true when the request is allowed.
 func (c *Client) Allow(ctx context.Context, key string, rps float64, burst int) (bool, error) {

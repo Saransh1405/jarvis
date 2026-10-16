@@ -12,7 +12,13 @@ class InMemoryConversationsStore:
         self._conversations: dict[str, Conversation] = {}
         self._messages: dict[str, list[Message]] = {}
 
-    async def create_conversation(self, user_id: str) -> str:
+    async def create_conversation(
+        self,
+        user_id: str,
+        *,
+        channel: str = "web",
+        channel_chat_id: str | None = None,
+    ) -> str:
         conv_id = str(uuid4())
         now = datetime.now(timezone.utc)
         self._conversations[conv_id] = Conversation(
@@ -21,9 +27,26 @@ class InMemoryConversationsStore:
             title=None,
             created_at=now,
             updated_at=now,
+            channel=channel,
+            channel_chat_id=channel_chat_id,
         )
         self._messages[conv_id] = []
         return conv_id
+
+    async def latest_channel_conversation(
+        self, user_id: str, channel: str, channel_chat_id: str
+    ) -> str | None:
+        matches = [
+            conv
+            for conv in self._conversations.values()
+            if conv.user_id == user_id
+            and conv.channel == channel
+            and conv.channel_chat_id == channel_chat_id
+        ]
+        if not matches:
+            return None
+        matches.sort(key=lambda conv: conv.updated_at, reverse=True)
+        return matches[0].id
 
     async def get_conversation(self, user_id: str, conversation_id: str) -> Conversation | None:
         conv = self._conversations.get(conversation_id)
@@ -41,6 +64,8 @@ class InMemoryConversationsStore:
             title=conv.title,
             created_at=conv.created_at,
             updated_at=datetime.now(timezone.utc),
+            channel=conv.channel,
+            channel_chat_id=conv.channel_chat_id,
         )
 
     async def append_message(

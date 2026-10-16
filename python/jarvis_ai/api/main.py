@@ -11,6 +11,11 @@ from pydantic import BaseModel, Field
 
 from jarvis_ai.actions.memory import InMemoryPendingActionsStore
 from jarvis_ai.actions.repository import PendingActionsRepository
+from jarvis_ai.channels.repository import ChannelsRepository
+from jarvis_ai.channels.routes import router as channel_router
+from jarvis_ai.channels.service import TelegramService
+from jarvis_ai.channels.telegram_api import HttpxTelegramClient, TelegramAdapter
+from jarvis_ai.channels.web import WebAdapter
 from jarvis_ai.config.settings import Settings
 from jarvis_ai.conversations import ConversationsRepository, InMemoryConversationsStore
 from jarvis_ai.db import create_pool, run_migrations
@@ -18,6 +23,8 @@ from jarvis_ai.memory.store import InMemoryMemoryStore, PostgresMemoryStore
 from jarvis_ai.notes.memory import InMemoryNotesStore
 from jarvis_ai.notes.repository import NotesRepository
 from jarvis_ai.observability.tool_log import NoOpToolCallLogger, ToolCallLogger
+from jarvis_ai.notify.repository import NotificationsRepository
+from jarvis_ai.notify.service import NotifyService
 from jarvis_ai.orchestrator.orchestrator import Orchestrator
 from jarvis_ai.reminders.memory import InMemoryRemindersStore
 from jarvis_ai.reminders.repository import RemindersRepository
@@ -64,6 +71,7 @@ async def lifespan(app: FastAPI):
         user_settings = InMemoryUserSettingsStore()
 
     app.state.db_pool = pool
+    app.state.settings = settings
     app.state.orchestrator = Orchestrator(
         settings,
         notes=notes,
@@ -74,12 +82,43 @@ async def lifespan(app: FastAPI):
         conversations=conversations,
         user_settings=user_settings,
     )
+    telegram_client: HttpxTelegramClient | None = None
+    app.state.telegram = None
+    app.state.notifier = None
+    if pool is not None:
+        channels = ChannelsRepository(pool)
+        adapters: dict = {"web": WebAdapter()}
+        telegram_adapter = None
+        if settings.telegram_bot_token:
+            telegram_client = HttpxTelegramClient(settings.telegram_bot_token)
+            telegram_adapter = TelegramAdapter(telegram_client)
+            adapters["telegram"] = telegram_adapter
+        app.state.notifier = NotifyService(
+            user_settings,
+            NotificationsRepository(pool),
+            adapters,
+            channels,
+        )
+        app.state.telegram = TelegramService(
+            channels=channels,
+            conversations=conversations,
+            orchestrator=app.state.orchestrator,
+            telegram=telegram_adapter,
+            settings_store=user_settings,
+            notes=notes,
+            reminders=reminders,
+            bot_username=settings.telegram_bot_username,
+            feature_enabled=settings.feature_telegram,
+        )
     yield
+    if telegram_client is not None:
+        await telegram_client.aclose()
     if pool is not None:
         await pool.close()
 
 
 app = FastAPI(title="JARVIS AI", version="0.1.0", lifespan=lifespan)
+app.include_router(channel_router)
 
 
 def get_orchestrator() -> Orchestrator:

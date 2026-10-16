@@ -29,6 +29,15 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     llm_max_tokens: int = Field(default=4096, ge=1, le=200000)
 
+    telegram_bot_token: str = ""
+    telegram_bot_username: str = ""
+    internal_api_token: str = ""
+    feature_telegram: bool = True
+
+    worker_poll_interval_seconds: int = Field(default=5, ge=1, le=60)
+    worker_batch_size: int = Field(default=20, ge=1, le=100)
+    job_lease_seconds: int = Field(default=60, ge=5, le=600)
+
     # Postgres (Neon or local). DATABASE_URL takes precedence over POSTGRES_DSN.
     database_url: str = Field(
         default="",

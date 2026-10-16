@@ -49,11 +49,16 @@ type Config struct {
 	TracingEnabled bool
 	ServiceName    string
 
-	PublicPaths         []string
-	PublicPathPrefixes  []string
+	PublicPaths        []string
+	PublicPathPrefixes []string
 
 	AuditLogEnabled bool
+
+	TelegramWebhookSecret string
+	InternalAPIToken      string
 }
+
+const telegramWebhookPath = "/api/v1/channels/telegram/webhook"
 
 // IsPublicPath reports whether a request path skips JWT authentication.
 func (c *Config) IsPublicPath(path string) bool {
@@ -147,8 +152,13 @@ func Load() (*Config, error) {
 		PublicPaths: envCSVWithDefault("GATEWAY_PUBLIC_PATHS", []string{
 			"/health", "/ready", "/live", "/api/v1/auth/login", "/api/v1/auth/signup",
 		}),
-		PublicPathPrefixes: envCSVWithDefault("GATEWAY_PUBLIC_PATH_PREFIXES", nil),
-		AuditLogEnabled: envBool("GATEWAY_AUDIT_LOG_ENABLED", false),
+		PublicPathPrefixes:    envCSVWithDefault("GATEWAY_PUBLIC_PATH_PREFIXES", nil),
+		AuditLogEnabled:       envBool("GATEWAY_AUDIT_LOG_ENABLED", false),
+		TelegramWebhookSecret: envString("TELEGRAM_WEBHOOK_SECRET", ""),
+		InternalAPIToken:      envString("INTERNAL_API_TOKEN", ""),
+	}
+	if !containsPath(cfg.PublicPaths, telegramWebhookPath) {
+		cfg.PublicPaths = append(cfg.PublicPaths, telegramWebhookPath)
 	}
 
 	return cfg, nil
@@ -261,6 +271,15 @@ func envCSVWithDefault(key string, fallback []string) []string {
 		return fallback
 	}
 	return splitCSV(v)
+}
+
+func containsPath(paths []string, want string) bool {
+	for _, path := range paths {
+		if path == want {
+			return true
+		}
+	}
+	return false
 }
 
 func splitCSV(s string) []string {

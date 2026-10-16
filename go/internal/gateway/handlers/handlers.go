@@ -8,6 +8,10 @@ import (
 	"jarvis-go/internal/gateway/users"
 	"jarvis-go/internal/gateway/usersettings"
 
+	"log/slog"
+	"net/http"
+	"time"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -61,5 +65,25 @@ func RegisterRoutes(
 		api.GET("/conversations/:id/messages", func(c *gin.Context) {
 			chatProxy.Forward(c, "/api/v1/conversations/"+c.Param("id")+"/messages")
 		})
+
+		api.POST("/channels/telegram/link", func(c *gin.Context) {
+			chatProxy.Forward(c, "/api/v1/channels/telegram/link")
+		})
+		api.GET("/channels/telegram", func(c *gin.Context) {
+			chatProxy.Forward(c, "/api/v1/channels/telegram")
+		})
+		api.DELETE("/channels/telegram", func(c *gin.Context) {
+			chatProxy.Forward(c, "/api/v1/channels/telegram")
+		})
 	}
+
+	telegram := &TelegramHandler{
+		Secret:        cfg.TelegramWebhookSecret,
+		InternalToken: cfg.InternalAPIToken,
+		PythonAPIURL:  cfg.PythonAPIURL,
+		Redis:         redisClient,
+		HTTP:          &http.Client{Timeout: 2 * time.Minute},
+		Logger:        slog.Default(),
+	}
+	engine.POST("/api/v1/channels/telegram/webhook", telegram.Webhook)
 }

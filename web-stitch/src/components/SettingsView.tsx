@@ -1,9 +1,13 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   browserTimezone,
+  disconnectTelegram,
   fetchSettings,
+  fetchTelegramStatus,
+  startTelegramLink,
   updateSettings,
   type BriefSections,
+  type TelegramStatus,
   type UserSettings,
 } from "../api";
 import { ArcCoreHologram } from "./ArcCoreHologram";
@@ -50,14 +54,23 @@ export function SettingsView({ onBack, onLogout }: SettingsViewProps) {
   const [quietStart, setQuietStart] = useState("22:00");
   const [quietEnd, setQuietEnd] = useState("07:00");
   const [preferredChannel, setPreferredChannel] = useState<"web" | "telegram">("web");
+  const [telegram, setTelegram] = useState<TelegramStatus>({
+    linked: false,
+    status: null,
+    username: null,
+  });
+  const [telegramBusy, setTelegramBusy] = useState(false);
+  const [telegramNote, setTelegramNote] = useState("");
+  const pollRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const s = await fetchSettings();
+        const [s, tg] = await Promise.all([fetchSettings(), fetchTelegramStatus().catch(() => null)]);
         if (cancelled) return;
         applySettings(s);
+        if (tg) setTelegram(tg);
       } catch (err) {
         if (!cancelled) {
           if (err instanceof Error && err.message === "unauthorized") onLogout();
@@ -71,6 +84,73 @@ export function SettingsView({ onBack, onLogout }: SettingsViewProps) {
       cancelled = true;
     };
   }, [onLogout]);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) window.clearInterval(pollRef.current);
+    };
+  }, []);
+
+  function stopTelegramPoll() {
+    if (pollRef.current) {
+      window.clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }
+
+  async function connectTelegram() {
+    setTelegramBusy(true);
+    setError("");
+    setTelegramNote("");
+    try {
+      const link = await startTelegramLink();
+      window.open(link.url, "_blank", "noopener,noreferrer");
+      setTelegramNote("Press Start in Telegram. This page updates when the chat is linked.");
+      stopTelegramPoll();
+      const started = Date.now();
+      pollRef.current = window.setInterval(() => {
+        void (async () => {
+          try {
+            const status = await fetchTelegramStatus();
+            setTelegram(status);
+            if (status.linked) {
+              stopTelegramPoll();
+              setPreferredChannel("telegram");
+              setTelegramNote("Telegram connected.");
+              setTelegramBusy(false);
+            } else if (Date.now() - started > 120_000) {
+              stopTelegramPoll();
+              setTelegramNote("Still waiting. Generate a new link if the previous one expired.");
+              setTelegramBusy(false);
+            }
+          } catch {
+            // Keep polling until the link window ends.
+          }
+        })();
+      }, 2000);
+    } catch (err) {
+      if (err instanceof Error && err.message === "unauthorized") onLogout();
+      else setError(err instanceof Error ? err.message : "Could not connect Telegram");
+      setTelegramBusy(false);
+    }
+  }
+
+  async function onDisconnectTelegram() {
+    setTelegramBusy(true);
+    setError("");
+    try {
+      await disconnectTelegram();
+      stopTelegramPoll();
+      setTelegram({ linked: false, status: "unlinked", username: null });
+      setPreferredChannel("web");
+      setTelegramNote("Telegram disconnected.");
+    } catch (err) {
+      if (err instanceof Error && err.message === "unauthorized") onLogout();
+      else setError(err instanceof Error ? err.message : "Could not disconnect Telegram");
+    } finally {
+      setTelegramBusy(false);
+    }
+  }
 
   function applySettings(s: UserSettings) {
     setTimezone(s.timezone);
@@ -242,6 +322,35 @@ export function SettingsView({ onBack, onLogout }: SettingsViewProps) {
             </section>
 
             <section className="rounded-xl bg-surface-container-low p-space-lg space-y-space-md">
+              <h2 className="font-headline-sm text-headline-sm text-primary">Telegram</h2>
+              <p className="text-label-sm text-on-surface-variant">
+                {telegram.linked
+                  ? `Connected${telegram.username ? ` as @${telegram.username}` : ""}.`
+                  : "Link a Telegram chat so JARVIS can reply there."}
+              </p>
+              {telegram.linked ? (
+                <button
+                  type="button"
+                  disabled={telegramBusy}
+                  onClick={() => void onDisconnectTelegram()}
+                  className="px-space-md py-space-sm rounded-lg bg-surface-container-high disabled:opacity-50"
+                >
+                  Disconnect Telegram
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={telegramBusy}
+                  onClick={() => void connectTelegram()}
+                  className="px-space-md py-space-sm rounded-lg bg-primary-container text-on-primary disabled:opacity-50"
+                >
+                  {telegramBusy ? "Waiting for Telegram…" : "Connect Telegram"}
+                </button>
+              )}
+              {telegramNote ? <p className="text-label-sm text-on-surface-variant">{telegramNote}</p> : null}
+            </section>
+
+            <section className="rounded-xl bg-surface-container-low p-space-lg space-y-space-md">
               <h2 className="font-headline-sm text-headline-sm text-primary">Preferred channel</h2>
               <div className="flex flex-col gap-space-sm">
                 <label className="flex items-center gap-space-sm">
@@ -253,9 +362,15 @@ export function SettingsView({ onBack, onLogout }: SettingsViewProps) {
                   />
                   Web
                 </label>
-                <label className="flex items-center gap-space-sm opacity-60">
-                  <input type="radio" name="channel" disabled checked={preferredChannel === "telegram"} />
-                  Telegram (Connect Telegram — coming soon)
+                <label className={`flex items-center gap-space-sm ${telegram.linked ? "" : "opacity-60"}`}>
+                  <input
+                    type="radio"
+                    name="channel"
+                    disabled={!telegram.linked}
+                    checked={preferredChannel === "telegram"}
+                    onChange={() => setPreferredChannel("telegram")}
+                  />
+                  Telegram
                 </label>
               </div>
             </section>

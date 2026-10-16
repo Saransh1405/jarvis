@@ -40,9 +40,18 @@ class InMemoryPendingActionsStore:
             return None
         return record
 
-    async def set_status(self, action_id: str, user_id: str, status: str) -> bool:
+    async def set_status(
+        self,
+        action_id: str,
+        user_id: str,
+        status: str,
+        *,
+        only_if: str | None = "pending",
+    ) -> bool:
         record = self._items.get(action_id)
-        if record is None or record.user_id != user_id or record.status != "pending":
+        if record is None or record.user_id != user_id:
+            return False
+        if only_if is not None and record.status != only_if:
             return False
         self._items[action_id] = PendingActionRecord(
             id=record.id,

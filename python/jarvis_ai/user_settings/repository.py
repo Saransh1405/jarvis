@@ -56,6 +56,30 @@ class UserSettingsRepository:
 
         return _row_to_settings(record)
 
+    async def update_timezone(self, user_id: str, timezone: str) -> None:
+        await self.get(user_id)
+        await self._pool.execute(
+            """
+            UPDATE user_settings
+            SET timezone = $2, updated_at = NOW()
+            WHERE user_id = $1::uuid
+            """,
+            user_id,
+            timezone,
+        )
+
+    async def set_preferred_channel(self, user_id: str, channel: str) -> None:
+        await self.get(user_id)
+        await self._pool.execute(
+            """
+            UPDATE user_settings
+            SET preferred_channel = $2, updated_at = NOW()
+            WHERE user_id = $1::uuid
+            """,
+            user_id,
+            channel,
+        )
+
 
 def _row_to_settings(record: asyncpg.Record) -> UserSettings:
     brief_sections = default_brief_sections()
