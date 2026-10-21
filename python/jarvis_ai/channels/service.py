@@ -25,6 +25,8 @@ HELP_TEXT = (
     "/new — start a fresh conversation\n"
     "/reminders — list upcoming reminders\n"
     "/brief — send today's brief now\n"
+    "/memory — show what I remember\n"
+    "/forget <text> — delete a matching memory\n"
     "/notes — recent notes\n"
     "/timezone Asia/Kolkata — set your timezone\n"
     "/settings — show current settings\n"
@@ -49,6 +51,7 @@ class TelegramService:
         clock=None,
         jobs=None,
         briefs=None,
+        memory=None,
     ) -> None:
         self._channels = channels
         self._conversations = conversations
@@ -59,6 +62,7 @@ class TelegramService:
         self._reminders = reminders
         self._jobs = jobs
         self._briefs = briefs
+        self._memory = memory
         self._bot_username = bot_username.lstrip("@")
         self._feature_enabled = feature_enabled
         self._clock = clock or (lambda: datetime.now(timezone.utc))
@@ -206,8 +210,10 @@ class TelegramService:
             return await self._notes_list(row.user_id)
         if name == "/brief":
             return await self._brief(row.user_id)
-        if name in ("/memory", "/forget"):
-            return OutboundMessage(text="That arrives in a later update.", format="plain")
+        if name == "/memory":
+            return await self._memory_page(row.user_id, arg)
+        if name == "/forget":
+            return await self._forget(row.user_id, arg)
         return OutboundMessage(text=HELP_TEXT, format="plain")
 
     async def _timezone(self, user_id: str, arg: str) -> OutboundMessage:
@@ -237,7 +243,8 @@ class TelegramService:
             f"Timezone: {cfg.timezone}\n"
             f"Preferred channel: {cfg.preferred_channel}\n"
             f"Morning brief: {'on' if cfg.brief_enabled else 'off'} at {cfg.brief_time_local}\n"
-            f"Quiet hours: {quiet}"
+            f"Quiet hours: {quiet}\n"
+            f"Learn from chats: {'on' if cfg.feature_flags.get('learn_from_conversations', True) else 'off'}"
         )
         return OutboundMessage(text=text, format="plain")
 
@@ -302,6 +309,9 @@ class TelegramService:
             await self._answer(callback_id, "Unknown action.")
             return
         kind, action_id = parsed
+        if kind == "md":
+            await self._delete_memory(action_id, row.user_id, callback_id, message_id, external_id)
+            return
         if kind in ("d", "s10", "s60", "st"):
             await self._handle_reminder_callback(
                 kind, action_id, row.user_id, callback_id, message_id, external_id
@@ -327,6 +337,76 @@ class TelegramService:
         outcome = str(result.get("message") or "Done.")
         if isinstance(message_id, int) and self._telegram is not None:
             await self._telegram.edit_message(external_id, message_id, outcome)
+
+    async def _memory_page(self, user_id: str, arg: str) -> OutboundMessage:
+        if self._memory is None or not hasattr(self._memory, "list"):
+            return OutboundMessage(text="Memory is not available.", format="plain")
+        page = 1
+        if arg.strip().isdigit():
+            page = max(1, int(arg.strip()))
+        page_size = 5
+        rows = await self._memory.list(
+            user_id, limit=page_size + 1, offset=(page - 1) * page_size
+        )
+        has_more = len(rows) > page_size
+        rows = rows[:page_size]
+        if not rows:
+            if page == 1:
+                return OutboundMessage(text="I am not storing any memories yet.", format="plain")
+            return OutboundMessage(text="No more memories.", format="plain")
+        lines = [f"Memories, page {page}:"]
+        buttons: list[list[Button]] = []
+        for row in rows:
+            lines.append(f"• [{row.kind}] {row.content}")
+            label = row.content[:24]
+            buttons.append([Button(text=f"Delete: {label}", callback_data=f"md:{row.id}")])
+        if has_more:
+            lines.append(f"Send /memory {page + 1} for the next page.")
+        return OutboundMessage(text="\n".join(lines), buttons=buttons, format="plain")
+
+    async def _forget(self, user_id: str, arg: str) -> OutboundMessage:
+        text = arg.strip()
+        if not text:
+            return OutboundMessage(
+                text="Send /forget followed by what to delete, for example /forget vegetarian.",
+                format="plain",
+            )
+        if self._memory is None:
+            return OutboundMessage(text="Memory is not available.", format="plain")
+        finder = getattr(self._memory, "search_for_forget", None)
+        if finder is None:
+            matches = await self._memory.search(user_id, text, limit=5)
+        else:
+            matches = await finder(user_id, text, limit=5)
+        if not matches:
+            return OutboundMessage(text="I could not find a memory matching that.", format="plain")
+        lines = ["Tap delete to forget these:"]
+        buttons: list[list[Button]] = []
+        for row in matches:
+            lines.append(f"• {row.content}")
+            buttons.append([Button(text=f"Delete: {row.content[:24]}", callback_data=f"md:{row.id}")])
+        return OutboundMessage(text="\n".join(lines), buttons=buttons, format="plain")
+
+    async def _delete_memory(
+        self,
+        memory_id: str,
+        user_id: str,
+        callback_id: str,
+        message_id,
+        external_id: str,
+    ) -> None:
+        if self._memory is None:
+            await self._answer(callback_id, "Memory is not available.")
+            return
+        row = await self._memory.get(user_id, memory_id) if hasattr(self._memory, "get") else None
+        if row is None:
+            await self._answer(callback_id, "That memory is already gone.")
+            return
+        await self._memory.delete(user_id, memory_id)
+        notice = f"Forgot: {row.content}"
+        await self._answer(callback_id, "Deleted.")
+        if isinstance(message_id, int) and self._telegram is not None:
+            await self._telegram.edit_message(external_id, message_id, notice, rich=False)
 
     async def _brief(self, user_id: str) -> OutboundMessage:
         if self._briefs is None:

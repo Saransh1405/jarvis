@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     # Generic fallback key when vendor-specific key is not set
     llm_api_key: str = ""
     openai_api_key: str = ""
+    embedding_model: str = "text-embedding-3-small"
     anthropic_api_key: str = ""
     gemini_api_key: str = ""
     llm_max_tokens: int = Field(default=4096, ge=1, le=200000)

@@ -1,0 +1,588 @@
+{
+  "retrieval": [
+    {
+      "id": "dinner",
+      "query": "suggest dinner",
+      "expect": "The user is vegetarian",
+      "memories": [
+        {
+          "content": "The user is vegetarian"
+        },
+        {
+          "content": "The user plays chess on Sundays"
+        }
+      ]
+    },
+    {
+      "id": "where_work",
+      "query": "Where do I work?",
+      "expect": "works at Appscrip",
+      "memories": [
+        {
+          "content": "The user works at Appscrip in Bangalore"
+        },
+        {
+          "content": "The user likes jazz piano"
+        }
+      ]
+    },
+    {
+      "id": "avoid_eating",
+      "query": "What should I avoid eating?",
+      "expect": "vegetarian",
+      "memories": [
+        {
+          "content": "The user is vegetarian"
+        },
+        {
+          "content": "The user has a flight on Friday"
+        }
+      ]
+    },
+    {
+      "id": "who_vegetarian",
+      "query": "Who is vegetarian?",
+      "expect": "Priya is vegetarian",
+      "memories": [
+        {
+          "content": "Priya is vegetarian"
+        },
+        {
+          "content": "The user works at Appscrip"
+        }
+      ]
+    },
+    {
+      "id": "where_live",
+      "query": "Where do I live?",
+      "expect": "lives in Bangalore",
+      "memories": [
+        {
+          "content": "The user lives in Bangalore"
+        },
+        {
+          "content": "Prefers morning workouts",
+          "kind": "preference",
+          "importance": 4
+        }
+      ]
+    },
+    {
+      "id": "sister",
+      "query": "What is my sister's name?",
+      "expect": "sister is Priya",
+      "memories": [
+        {
+          "content": "The user's sister is Priya"
+        },
+        {
+          "content": "The user likes tea"
+        }
+      ]
+    },
+    {
+      "id": "birthday",
+      "query": "When is Priya's birthday?",
+      "expect": "birthday is 12 May",
+      "memories": [
+        {
+          "content": "Priya's birthday is 12 May"
+        },
+        {
+          "content": "The user lives in Pune"
+        }
+      ]
+    },
+    {
+      "id": "workout",
+      "query": "What workout do I prefer?",
+      "expect": "morning workouts",
+      "memories": [
+        {
+          "content": "The user prefers morning workouts"
+        },
+        {
+          "content": "The user likes jazz piano"
+        }
+      ]
+    },
+    {
+      "id": "gym",
+      "query": "Which gym do I use?",
+      "expect": "gym near the office",
+      "memories": [
+        {
+          "content": "The user uses the gym near the office"
+        },
+        {
+          "content": "The user likes tea"
+        }
+      ]
+    },
+    {
+      "id": "run",
+      "query": "When do I run?",
+      "expect": "running in the morning",
+      "memories": [
+        {
+          "content": "The user goes running in the morning"
+        },
+        {
+          "content": "The user works at Appscrip"
+        }
+      ]
+    },
+    {
+      "id": "flight",
+      "query": "What time is my flight?",
+      "expect": "flight to Paris",
+      "memories": [
+        {
+          "content": "The user has a flight to Paris at 9"
+        },
+        {
+          "content": "The user likes jazz piano"
+        }
+      ]
+    },
+    {
+      "id": "airport",
+      "query": "Which airport am I using?",
+      "expect": "airport",
+      "memories": [
+        {
+          "content": "The user flies from the city airport"
+        },
+        {
+          "content": "Priya is vegetarian"
+        }
+      ]
+    },
+    {
+      "id": "trip",
+      "query": "Where is my trip?",
+      "expect": "trip to Paris",
+      "memories": [
+        {
+          "content": "The user planned a trip to Paris"
+        },
+        {
+          "content": "The user likes tea"
+        }
+      ]
+    },
+    {
+      "id": "travel",
+      "query": "Any travel coming up?",
+      "expect": "travel to Paris",
+      "memories": [
+        {
+          "content": "The user has travel to Paris next month"
+        },
+        {
+          "content": "The user plays chess"
+        }
+      ]
+    },
+    {
+      "id": "plumber",
+      "query": "Who is my plumber?",
+      "expect": "plumber is Raj",
+      "memories": [
+        {
+          "content": "The user's plumber is Raj"
+        },
+        {
+          "content": "The user likes jazz piano"
+        }
+      ]
+    },
+    {
+      "id": "raj_number",
+      "query": "What is Raj's number?",
+      "expect": "555-0100",
+      "memories": [
+        {
+          "content": "Raj the plumber number is 555-0100"
+        },
+        {
+          "content": "The user lives in Pune"
+        }
+      ]
+    },
+    {
+      "id": "gate",
+      "query": "What is the gate code?",
+      "expect": "gate code is 1234",
+      "memories": [
+        {
+          "content": "The apartment gate code is 1234"
+        },
+        {
+          "content": "The user likes tea"
+        }
+      ]
+    },
+    {
+      "id": "apartment",
+      "query": "Which apartment am I in?",
+      "expect": "apartment",
+      "memories": [
+        {
+          "content": "The user lives in apartment 4B"
+        },
+        {
+          "content": "The user works at Appscrip"
+        }
+      ]
+    },
+    {
+      "id": "breakfast",
+      "query": "What do I eat for breakfast?",
+      "expect": "breakfast",
+      "memories": [
+        {
+          "content": "The user eats fruit for breakfast"
+        },
+        {
+          "content": "The user likes jazz piano"
+        }
+      ]
+    },
+    {
+      "id": "meal",
+      "query": "What meal should I cook?",
+      "expect": "meal",
+      "memories": [
+        {
+          "content": "The user likes a light evening meal"
+        },
+        {
+          "content": "The user works at Appscrip"
+        }
+      ]
+    },
+    {
+      "id": "food",
+      "query": "What food do I like?",
+      "expect": "food",
+      "memories": [
+        {
+          "content": "The user likes south Indian food"
+        },
+        {
+          "content": "The user has a flight on Friday"
+        }
+      ]
+    },
+    {
+      "id": "engineer",
+      "query": "Am I an engineer?",
+      "expect": "engineer",
+      "memories": [
+        {
+          "content": "The user is an engineer"
+        },
+        {
+          "content": "The user likes tea"
+        }
+      ]
+    },
+    {
+      "id": "office",
+      "query": "Where is my office?",
+      "expect": "office is in Bangalore",
+      "memories": [
+        {
+          "content": "The user's office is in Bangalore"
+        },
+        {
+          "content": "The user likes jazz piano"
+        }
+      ]
+    },
+    {
+      "id": "job",
+      "query": "What is my job?",
+      "expect": "job is engineer",
+      "memories": [
+        {
+          "content": "The user's job is engineer at Appscrip"
+        },
+        {
+          "content": "The user likes tea"
+        }
+      ]
+    },
+    {
+      "id": "city",
+      "query": "Which city am I in?",
+      "expect": "city is Bangalore",
+      "memories": [
+        {
+          "content": "The user's city is Bangalore"
+        },
+        {
+          "content": "The user likes jazz piano"
+        }
+      ]
+    },
+    {
+      "id": "moved",
+      "query": "Did I move?",
+      "expect": "moved to Pune",
+      "memories": [
+        {
+          "content": "The user moved to Pune"
+        },
+        {
+          "content": "The user likes tea"
+        }
+      ]
+    },
+    {
+      "id": "family",
+      "query": "Who is in my family?",
+      "expect": "family",
+      "memories": [
+        {
+          "content": "The user's family includes Priya"
+        },
+        {
+          "content": "The user likes jazz piano"
+        }
+      ]
+    },
+    {
+      "id": "brother",
+      "query": "Do I have a brother?",
+      "expect": "brother",
+      "memories": [
+        {
+          "content": "The user has a brother named Arun"
+        },
+        {
+          "content": "The user likes tea"
+        }
+      ]
+    },
+    {
+      "id": "concise",
+      "query": "How should you answer me?",
+      "expect": "Prefers concise answers",
+      "memories": [
+        {
+          "content": "Prefers concise answers",
+          "kind": "preference",
+          "importance": 5
+        },
+        {
+          "content": "The user likes jazz piano"
+        }
+      ]
+    },
+    {
+      "id": "morning_ping",
+      "query": "When can you ping me?",
+      "expect": "ping the user before 9",
+      "memories": [
+        {
+          "content": "Don't ping the user before 9am",
+          "kind": "preference",
+          "importance": 5
+        },
+        {
+          "content": "The user likes tea"
+        }
+      ]
+    },
+    {
+      "id": "goal",
+      "query": "What am I preparing for?",
+      "expect": "system design interview",
+      "memories": [
+        {
+          "content": "The user is preparing for a system design interview",
+          "kind": "goal",
+          "importance": 4
+        },
+        {
+          "content": "The user likes jazz piano"
+        }
+      ]
+    },
+    {
+      "id": "interview",
+      "query": "When is the interview?",
+      "expect": "interview is in November",
+      "memories": [
+        {
+          "content": "The system design interview is in November",
+          "kind": "goal",
+          "importance": 4
+        },
+        {
+          "content": "The user likes tea"
+        }
+      ]
+    },
+    {
+      "id": "appscrip",
+      "query": "Do I work at Appscrip?",
+      "expect": "Appscrip",
+      "memories": [
+        {
+          "content": "The user works at Appscrip"
+        },
+        {
+          "content": "The user likes jazz piano"
+        }
+      ]
+    },
+    {
+      "id": "infosys_current",
+      "query": "Did I mention Infosys?",
+      "expect": "Infosys",
+      "memories": [
+        {
+          "content": "The user worked at Infosys before Appscrip"
+        },
+        {
+          "content": "The user likes tea"
+        }
+      ]
+    },
+    {
+      "id": "bengaluru",
+      "query": "Am I in Bengaluru?",
+      "expect": "Bengaluru",
+      "memories": [
+        {
+          "content": "The user lives in Bengaluru"
+        },
+        {
+          "content": "The user likes jazz piano"
+        }
+      ]
+    },
+    {
+      "id": "pune_now",
+      "query": "Am I in Pune now?",
+      "expect": "lives in Pune",
+      "memories": [
+        {
+          "content": "The user lives in Pune"
+        },
+        {
+          "content": "The user likes tea"
+        }
+      ]
+    },
+    {
+      "id": "chess",
+      "query": "What game do I play?",
+      "expect": "chess",
+      "memories": [
+        {
+          "content": "The user plays chess on Sundays"
+        },
+        {
+          "content": "The user is vegetarian"
+        }
+      ]
+    },
+    {
+      "id": "previous_job",
+      "query": "What was my job before this?",
+      "expect": "worked at Infosys",
+      "memories": [
+        {
+          "content": "The user worked at Infosys",
+          "superseded": true
+        },
+        {
+          "content": "The user works at Appscrip"
+        }
+      ]
+    },
+    {
+      "id": "previous_city",
+      "query": "What city did I live in before?",
+      "expect": "lived in Bangalore",
+      "memories": [
+        {
+          "content": "The user lived in Bangalore",
+          "superseded": true
+        },
+        {
+          "content": "The user lives in Pune"
+        }
+      ]
+    },
+    {
+      "id": "unrelated_flight",
+      "query": "What is my flight number?",
+      "expect": "flight number",
+      "memories": [
+        {
+          "content": "The user likes jazz piano"
+        }
+      ]
+    }
+  ],
+  "extraction": [
+    {
+      "id": "sister_not_password",
+      "turns": [
+        "My sister is Priya",
+        "password: swordfish"
+      ],
+      "expect": [
+        "Priya"
+      ],
+      "reject": [
+        "swordfish"
+      ]
+    },
+    {
+      "id": "remember_city",
+      "turns": [
+        "Remember that I live in Bangalore"
+      ],
+      "expect": [
+        "I live in Bangalore"
+      ],
+      "reject": []
+    },
+    {
+      "id": "skip_question",
+      "turns": [
+        "Where do I work?"
+      ],
+      "expect": [],
+      "reject": [
+        "Where do I work"
+      ]
+    },
+    {
+      "id": "explicit_health",
+      "turns": [
+        "Remember that I was diagnosed with cancer"
+      ],
+      "expect": [
+        "diagnosed with cancer"
+      ],
+      "reject": []
+    },
+    {
+      "id": "implicit_health",
+      "turns": [
+        "I was diagnosed with cancer last year"
+      ],
+      "expect": [],
+      "reject": [
+        "cancer"
+      ]
+    }
+  ]
+}

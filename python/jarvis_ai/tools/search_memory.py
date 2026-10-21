@@ -14,7 +14,11 @@ async def _run_search_memory(args: dict[str, Any], ctx: ToolContext) -> str:
     query = str(args.get("query", "")).strip()
     limit = int(args.get("limit", 5))
     limit = max(1, min(limit, 20))
-    facts = await ctx.memory.search(ctx.user_id, query, limit=limit)
+    retrieve = getattr(ctx.memory, "retrieve_for_prompt", None)
+    if retrieve is not None:
+        facts = await retrieve(ctx.user_id, query, limit=limit)
+    else:
+        facts = await ctx.memory.search(ctx.user_id, query, limit=limit)
     if not facts:
         return "No matching memories found."
     lines = [f"- ({f.source}) {f.content}" for f in facts]

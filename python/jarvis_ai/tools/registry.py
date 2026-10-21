@@ -6,6 +6,8 @@ from jarvis_ai.tools.base import Tool
 from jarvis_ai.tools.calculator import calculator_tool
 from jarvis_ai.tools.cancel_reminder import cancel_reminder_tool
 from jarvis_ai.tools.context import ToolContext
+from jarvis_ai.tools.forget_all_memories import forget_all_memories_tool
+from jarvis_ai.tools.forget_memory import forget_memory_tool
 from jarvis_ai.tools.get_note import get_note_tool
 from jarvis_ai.tools.list_reminders import list_reminders_tool
 from jarvis_ai.tools.remember_fact import remember_fact_tool
@@ -62,4 +64,6 @@ def build_default_registry() -> ToolRegistry:
     registry.register(snooze_reminder_tool())
     registry.register(remember_fact_tool())
     registry.register(search_memory_tool())
+    registry.register(forget_memory_tool())
+    registry.register(forget_all_memories_tool())
     return registry

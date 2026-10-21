@@ -62,6 +62,18 @@ export type UserSettingsPatch = {
   brief_enabled?: boolean;
   brief_time_local?: string;
   brief_sections?: BriefSections;
+  feature_flags?: Record<string, unknown>;
+};
+
+export type MemoryItem = {
+  id: string;
+  kind: string;
+  content: string;
+  source: string;
+  importance: number;
+  confidence: number;
+  created_at: string;
+  updated_at: string | null;
 };
 
 type ApiErrorBody = {
@@ -183,6 +195,53 @@ export async function disconnectTelegram(): Promise<void> {
   const data = await parseJSON(res);
   if (res.status === 401) throw new Error("unauthorized");
   if (!res.ok) throw new Error(apiErrorMessage(data, "Could not disconnect Telegram."));
+}
+
+export async function fetchMemories(kind = "", query = ""): Promise<MemoryItem[]> {
+  const params = new URLSearchParams();
+  if (kind) params.set("kind", kind);
+  if (query) params.set("q", query);
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  const res = await fetch(`/api/v1/memories${suffix}`, { headers: authHeaders() });
+  const data = await parseJSON(res);
+  if (res.status === 401) throw new Error("unauthorized");
+  if (!res.ok) throw new Error(apiErrorMessage(data, "Could not load memories."));
+  return data as MemoryItem[];
+}
+
+export async function updateMemory(id: string, content: string): Promise<MemoryItem> {
+  const res = await fetch(`/api/v1/memories/${id}`, {
+    method: "PATCH",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ content }),
+  });
+  const data = await parseJSON(res);
+  if (res.status === 401) throw new Error("unauthorized");
+  if (!res.ok) throw new Error(apiErrorMessage(data, "Could not update that memory."));
+  return data as MemoryItem;
+}
+
+export async function deleteMemory(id: string): Promise<void> {
+  const res = await fetch(`/api/v1/memories/${id}`, { method: "DELETE", headers: authHeaders() });
+  const data = await parseJSON(res);
+  if (res.status === 401) throw new Error("unauthorized");
+  if (!res.ok) throw new Error(apiErrorMessage(data, "Could not delete that memory."));
+}
+
+export async function forgetAllMemories(): Promise<number> {
+  const res = await fetch("/api/v1/memories", { method: "DELETE", headers: authHeaders() });
+  const data = await parseJSON(res);
+  if (res.status === 401) throw new Error("unauthorized");
+  if (!res.ok) throw new Error(apiErrorMessage(data, "Could not forget everything."));
+  return Number((data as { deleted?: number })?.deleted ?? 0);
+}
+
+export async function exportMemories(): Promise<{ memories: MemoryItem[] }> {
+  const res = await fetch("/api/v1/memories/export", { headers: authHeaders() });
+  const data = await parseJSON(res);
+  if (res.status === 401) throw new Error("unauthorized");
+  if (!res.ok) throw new Error(apiErrorMessage(data, "Could not export memories."));
+  return data as { memories: MemoryItem[] };
 }
 
 export async function updateSettings(patch: UserSettingsPatch): Promise<UserSettings> {

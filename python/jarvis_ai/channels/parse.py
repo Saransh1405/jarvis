@@ -24,7 +24,7 @@ def parse_command(text: str) -> tuple[str, str] | None:
 
 
 # Longer prefixes first so s10/s60 are not read as a single-letter kind.
-_CALLBACK_KINDS = ("s10", "s60", "st", "a", "r", "d")
+_CALLBACK_KINDS = ("s10", "s60", "st", "md", "a", "r", "d")
 
 
 def parse_callback(data: str) -> tuple[str, str] | None:

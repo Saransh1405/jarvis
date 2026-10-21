@@ -69,6 +69,42 @@ def test_notifications_are_listed_for_the_requesting_user(client: TestClient) ->
     app.state.notifications = None
 
 
+def test_memories_are_scoped_to_the_requesting_user(client: TestClient) -> None:
+    from jarvis_ai.memory.store import InMemoryMemoryStore
+
+    store = InMemoryMemoryStore()
+    asyncio.run(store.add_fact("user-1", "likes tea", source="explicit"))
+    asyncio.run(store.add_fact("user-2", "secret coffee", source="explicit"))
+    app.state.memory = store
+
+    listed = client.get("/api/v1/memories", headers={"X-User-ID": "user-1"})
+    assert listed.status_code == 200
+    rows = listed.json()
+    assert len(rows) == 1
+    assert rows[0]["content"] == "likes tea"
+    memory_id = rows[0]["id"]
+
+    exported = client.get("/api/v1/memories/export", headers={"X-User-ID": "user-1"})
+    assert exported.status_code == 200
+    assert exported.json()["memories"][0]["content"] == "likes tea"
+
+    updated = client.patch(
+        f"/api/v1/memories/{memory_id}",
+        headers={"X-User-ID": "user-1"},
+        json={"content": "likes green tea"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["content"] == "likes green tea"
+
+    deleted = client.delete(f"/api/v1/memories/{memory_id}", headers={"X-User-ID": "user-1"})
+    assert deleted.status_code == 200
+    remaining = client.get("/api/v1/memories", headers={"X-User-ID": "user-1"})
+    assert remaining.json() == []
+
+    other = client.get("/api/v1/memories", headers={"X-User-ID": "user-2"})
+    assert other.json()[0]["content"] == "secret coffee"
+
+
 def test_chat_stream_stub(client: TestClient) -> None:
     with client.stream("POST", "/api/v1/chat/stream", json={"message": "hi"}) as resp:
         assert resp.status_code == 200

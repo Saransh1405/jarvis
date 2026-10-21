@@ -62,6 +62,21 @@ func RegisterRoutes(
 		api.GET("/notifications", func(c *gin.Context) {
 			chatProxy.Forward(c, "/api/v1/notifications")
 		})
+		api.GET("/memories", func(c *gin.Context) {
+			chatProxy.Forward(c, "/api/v1/memories")
+		})
+		api.GET("/memories/export", func(c *gin.Context) {
+			chatProxy.Forward(c, "/api/v1/memories/export")
+		})
+		api.PATCH("/memories/:id", func(c *gin.Context) {
+			chatProxy.Forward(c, "/api/v1/memories/"+c.Param("id"))
+		})
+		api.DELETE("/memories/:id", func(c *gin.Context) {
+			chatProxy.Forward(c, "/api/v1/memories/"+c.Param("id"))
+		})
+		api.DELETE("/memories", func(c *gin.Context) {
+			chatProxy.Forward(c, "/api/v1/memories")
+		})
 		api.GET("/conversations", func(c *gin.Context) {
 			chatProxy.Forward(c, "/api/v1/conversations")
 		})

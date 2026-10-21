@@ -1,0 +1,192 @@
+{
+  "retrieval": [
+    {
+      "id": "dinner",
+      "hit": true
+    },
+    {
+      "id": "where_work",
+      "hit": true
+    },
+    {
+      "id": "avoid_eating",
+      "hit": true
+    },
+    {
+      "id": "who_vegetarian",
+      "hit": true
+    },
+    {
+      "id": "where_live",
+      "hit": true
+    },
+    {
+      "id": "sister",
+      "hit": true
+    },
+    {
+      "id": "birthday",
+      "hit": true
+    },
+    {
+      "id": "workout",
+      "hit": true
+    },
+    {
+      "id": "gym",
+      "hit": true
+    },
+    {
+      "id": "run",
+      "hit": true
+    },
+    {
+      "id": "flight",
+      "hit": true
+    },
+    {
+      "id": "airport",
+      "hit": true
+    },
+    {
+      "id": "trip",
+      "hit": true
+    },
+    {
+      "id": "travel",
+      "hit": true
+    },
+    {
+      "id": "plumber",
+      "hit": true
+    },
+    {
+      "id": "raj_number",
+      "hit": true
+    },
+    {
+      "id": "gate",
+      "hit": true
+    },
+    {
+      "id": "apartment",
+      "hit": true
+    },
+    {
+      "id": "breakfast",
+      "hit": true
+    },
+    {
+      "id": "meal",
+      "hit": true
+    },
+    {
+      "id": "food",
+      "hit": true
+    },
+    {
+      "id": "engineer",
+      "hit": true
+    },
+    {
+      "id": "office",
+      "hit": true
+    },
+    {
+      "id": "job",
+      "hit": true
+    },
+    {
+      "id": "city",
+      "hit": true
+    },
+    {
+      "id": "moved",
+      "hit": true
+    },
+    {
+      "id": "family",
+      "hit": true
+    },
+    {
+      "id": "brother",
+      "hit": true
+    },
+    {
+      "id": "concise",
+      "hit": true
+    },
+    {
+      "id": "morning_ping",
+      "hit": true
+    },
+    {
+      "id": "goal",
+      "hit": true
+    },
+    {
+      "id": "interview",
+      "hit": true
+    },
+    {
+      "id": "appscrip",
+      "hit": true
+    },
+    {
+      "id": "infosys_current",
+      "hit": true
+    },
+    {
+      "id": "bengaluru",
+      "hit": true
+    },
+    {
+      "id": "pune_now",
+      "hit": true
+    },
+    {
+      "id": "chess",
+      "hit": true
+    },
+    {
+      "id": "previous_job",
+      "hit": false
+    },
+    {
+      "id": "previous_city",
+      "hit": false
+    },
+    {
+      "id": "unrelated_flight",
+      "hit": false
+    }
+  ],
+  "extraction": [
+    {
+      "id": "sister_not_password",
+      "kept": true,
+      "rejected": true
+    },
+    {
+      "id": "remember_city",
+      "kept": true,
+      "rejected": true
+    },
+    {
+      "id": "skip_question",
+      "kept": true,
+      "rejected": true
+    },
+    {
+      "id": "explicit_health",
+      "kept": true,
+      "rejected": true
+    },
+    {
+      "id": "implicit_health",
+      "kept": true,
+      "rejected": true
+    }
+  ],
+  "note": "previous_job and previous_city stay misses on purpose. Active-only pgvector cannot return a superseded memory, which is the signal to revisit Neo4j if that keeps failing on a real embedding model."
+}

@@ -35,6 +35,8 @@ def test_registry_llm_schemas() -> None:
     assert names == {
         "calculator",
         "cancel_reminder",
+        "forget_all_memories",
+        "forget_memory",
         "get_note",
         "list_reminders",
         "remember_fact",
@@ -50,6 +52,8 @@ EXPECTED_TOOL_TIERS: dict[str, Tier] = {
     "cancel_reminder": Tier.CONFIRM_REQUIRED,
     "get_note": Tier.SAFE,
     "list_reminders": Tier.SAFE,
+    "forget_all_memories": Tier.ALWAYS_CONFIRM,
+    "forget_memory": Tier.CONFIRM_REQUIRED,
     "remember_fact": Tier.SAFE,
     "search_memory": Tier.SAFE,
     "save_note": Tier.CONFIRM_REQUIRED,

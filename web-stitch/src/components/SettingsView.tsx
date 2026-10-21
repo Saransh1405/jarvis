@@ -54,6 +54,8 @@ export function SettingsView({ onBack, onLogout }: SettingsViewProps) {
   const [quietStart, setQuietStart] = useState("22:00");
   const [quietEnd, setQuietEnd] = useState("07:00");
   const [preferredChannel, setPreferredChannel] = useState<"web" | "telegram">("web");
+  const [featureFlags, setFeatureFlags] = useState<Record<string, unknown>>({});
+  const [learnFromChats, setLearnFromChats] = useState(true);
   const [telegram, setTelegram] = useState<TelegramStatus>({
     linked: false,
     status: null,
@@ -167,6 +169,9 @@ export function SettingsView({ onBack, onLogout }: SettingsViewProps) {
     setQuietStart(s.quiet_hours_start ?? "22:00");
     setQuietEnd(s.quiet_hours_end ?? "07:00");
     setPreferredChannel(s.preferred_channel === "telegram" ? "telegram" : "web");
+    const flags = s.feature_flags ?? {};
+    setFeatureFlags(flags);
+    setLearnFromChats(flags.learn_from_conversations !== false);
   }
 
   const filteredTz = useMemo(() => {
@@ -189,6 +194,7 @@ export function SettingsView({ onBack, onLogout }: SettingsViewProps) {
         preferred_channel: preferredChannel,
         quiet_hours_start: quietEnabled ? quietStart : "",
         quiet_hours_end: quietEnabled ? quietEnd : "",
+        feature_flags: { ...featureFlags, learn_from_conversations: learnFromChats },
       };
       const updated = await updateSettings(patch);
       applySettings(updated);
@@ -285,6 +291,21 @@ export function SettingsView({ onBack, onLogout }: SettingsViewProps) {
                   </label>
                 ))}
               </div>
+            </section>
+
+            <section className="rounded-xl bg-surface-container-low p-space-lg space-y-space-md">
+              <h2 className="font-headline-sm text-headline-sm text-primary">Memory</h2>
+              <label className="flex items-center gap-space-sm">
+                <input
+                  type="checkbox"
+                  checked={learnFromChats}
+                  onChange={(e) => setLearnFromChats(e.target.checked)}
+                />
+                Learn from my conversations
+              </label>
+              <p className="text-label-sm text-on-surface-variant">
+                When this is off, JARVIS only stores memories you explicitly ask it to remember.
+              </p>
             </section>
 
             <section className="rounded-xl bg-surface-container-low p-space-lg space-y-space-md">

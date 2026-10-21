@@ -11,6 +11,7 @@ class InMemoryConversationsStore:
     def __init__(self) -> None:
         self._conversations: dict[str, Conversation] = {}
         self._messages: dict[str, list[Message]] = {}
+        self._summaries: dict[str, str] = {}
 
     async def create_conversation(
         self,
@@ -101,6 +102,33 @@ class InMemoryConversationsStore:
         if len(msgs) <= limit:
             return list(msgs)
         return list(msgs[-limit:])
+
+    async def get_summary(self, user_id: str, conversation_id: str) -> str | None:
+        conv = await self.get_conversation(user_id, conversation_id)
+        if conv is None:
+            return None
+        return self._summaries.get(conversation_id)
+
+    async def set_summary(self, user_id: str, conversation_id: str, summary: str) -> None:
+        conv = await self.get_conversation(user_id, conversation_id)
+        if conv is None:
+            return
+        self._summaries[conversation_id] = summary
+
+    async def count_user_messages(self, user_id: str, conversation_id: str) -> int:
+        conv = await self.get_conversation(user_id, conversation_id)
+        if conv is None:
+            return 0
+        return sum(1 for message in self._messages.get(conversation_id, []) if message.role == "user")
+
+    async def latest_user_message_id(self, user_id: str, conversation_id: str) -> str | None:
+        conv = await self.get_conversation(user_id, conversation_id)
+        if conv is None:
+            return None
+        for message in reversed(self._messages.get(conversation_id, [])):
+            if message.role == "user":
+                return message.id
+        return None
 
     async def list_conversations(self, user_id: str, limit: int = 20) -> list[Conversation]:
         convs = [c for c in self._conversations.values() if c.user_id == user_id]

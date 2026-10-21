@@ -1,6 +1,7 @@
 import json
 import re
 from collections.abc import AsyncIterator
+from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
@@ -13,6 +14,9 @@ from jarvis_ai.conversations.history import (
 )
 from jarvis_ai.memory.extraction import extract_chat_facts
 from jarvis_ai.memory.helpers import store_extracted_facts
+from jarvis_ai.memory.rank import render_memory_block
+from jarvis_ai.memory.schedule import enqueue_memory_extract, learns_from_conversations
+from jarvis_ai.memory.summary import maybe_roll_summary
 from jarvis_ai.observability.tool_log import log_agent_tools_summary
 from jarvis_ai.llm.agent_types import ToolCall
 from jarvis_ai.llm.base import DEFAULT_SYSTEM_PROMPT, LLMProvider
@@ -41,7 +45,9 @@ from jarvis_ai.user_settings.models import UserSettings
 from jarvis_ai.user_settings.repository import UserSettingsStore
 
 HISTORY_MESSAGE_LIMIT = 40
+SUMMARY_VERBATIM = 8
 PENDING_ACTION_TTL = timedelta(hours=24)
+_accessed_ids: ContextVar[list[str] | None] = ContextVar("jarvis_memory_accessed", default=None)
 
 
 def _action_expired(created_at: datetime, now: datetime | None = None) -> bool:
@@ -170,6 +176,8 @@ class Orchestrator:
         user_message: str,
         user_cfg: UserSettings | None = None,
         channel: str | None = None,
+        previous_user_message: str = "",
+        conversation_summary: str = "",
     ) -> str:
         sections = [DEFAULT_SYSTEM_PROMPT]
         cfg = user_cfg if user_cfg is not None else await self._user_settings_for(user_id)
@@ -184,6 +192,10 @@ class Orchestrator:
             sections.append(
                 "You are replying on Telegram. Keep answers short. Do not use wide tables."
             )
+        if conversation_summary:
+            sections.append(
+                "Earlier in this conversation (summary):\n" + conversation_summary
+            )
 
         if user_id and self._reminders is not None:
             due = await self._reminders.list_due(user_id)
@@ -195,20 +207,30 @@ class Orchestrator:
                 sections.append("Due reminders for this user:\n" + "\n".join(lines))
 
         if user_id and self._memory is not None:
-            facts = []
-            seen: set[str] = set()
-            for term in _memory_search_terms(user_message):
-                for fact in await self._memory.search(user_id, term, limit=5):
-                    if fact.id not in seen:
-                        seen.add(fact.id)
-                        facts.append(fact)
+            retrieve = getattr(self._memory, "retrieve_for_prompt", None)
+            if retrieve is not None:
+                facts = await retrieve(
+                    user_id,
+                    user_message,
+                    previous=previous_user_message,
+                )
+            else:
+                facts = []
+                seen: set[str] = set()
+                for term in _memory_search_terms(user_message):
+                    for fact in await self._memory.search(user_id, term, limit=5):
+                        if fact.id not in seen:
+                            seen.add(fact.id)
+                            facts.append(fact)
+                        if len(facts) >= 5:
+                            break
                     if len(facts) >= 5:
                         break
-                if len(facts) >= 5:
-                    break
             if facts:
-                lines = [f"- ({f.source}) {f.content}" for f in facts]
-                sections.append("Relevant long-term memory:\n" + "\n".join(lines))
+                sections.append(render_memory_block(facts))
+                accessed = _accessed_ids.get()
+                if accessed is not None:
+                    accessed.extend(fact.id for fact in facts)
 
         return "\n\n".join(sections)
 
@@ -251,6 +273,7 @@ class Orchestrator:
         user_id: str | None,
         user_message: str,
         result: AgentResult,
+        conversation_id: str | None = None,
     ) -> None:
         if not user_id or self._memory is None:
             return
@@ -258,10 +281,48 @@ class Orchestrator:
             return
         if "remember_fact" in (result.tools_used or []):
             return
+        if (
+            self._jobs is not None
+            and self._conversations is not None
+            and conversation_id
+            and conversation_id != "conv-stub"
+        ):
+            await self._schedule_memory_extract(user_id, conversation_id)
+            return
         facts = extract_chat_facts(user_message, result.message)
         if not facts:
             return
         await store_extracted_facts(self._memory, user_id, facts, source="chat")
+
+    async def _schedule_memory_extract(self, user_id: str, conversation_id: str) -> None:
+        settings = await self._user_settings_for(user_id)
+        if not learns_from_conversations(settings):
+            return
+        user_turns = 1
+        last_message_id = conversation_id
+        if hasattr(self._conversations, "count_user_messages"):
+            user_turns = await self._conversations.count_user_messages(user_id, conversation_id)
+        if hasattr(self._conversations, "latest_user_message_id"):
+            latest = await self._conversations.latest_user_message_id(user_id, conversation_id)
+            if latest:
+                last_message_id = latest
+        await enqueue_memory_extract(
+            self._jobs,
+            user_id,
+            conversation_id,
+            user_turns=user_turns,
+            last_message_id=last_message_id,
+            now=datetime.now(timezone.utc),
+        )
+
+    async def _finish_memory(self, user_id: str | None, conversation_id: str | None) -> None:
+        accessed = _accessed_ids.get() or []
+        if user_id and self._memory is not None and accessed and hasattr(self._memory, "mark_accessed"):
+            await self._memory.mark_accessed(user_id, accessed)
+        if user_id and conversation_id and conversation_id != "conv-stub":
+            await maybe_roll_summary(
+                self._conversations, self._llm, self._memory, user_id, conversation_id
+            )
 
     async def _run_chat_agent(
         self,
@@ -306,8 +367,23 @@ class Orchestrator:
         history = await self._conversations.list_messages(
             user_id, conv_id, limit=HISTORY_MESSAGE_LIMIT
         )
+        previous_user = ""
+        for prior in reversed(history):
+            if prior.role == "user" and prior.content:
+                previous_user = prior.content
+                break
+        summary = ""
+        if hasattr(self._conversations, "get_summary"):
+            summary = await self._conversations.get_summary(user_id, conv_id) or ""
+        if summary:
+            history = history[-SUMMARY_VERBATIM:]
         system_prompt = await self._build_system_prompt(
-            user_id, message, user_cfg, channel=channel
+            user_id,
+            message,
+            user_cfg,
+            channel=channel,
+            previous_user_message=previous_user,
+            conversation_summary=summary,
         )
         llm_messages = stored_messages_to_llm(history, system_prompt)
         await self._conversations.append_message(user_id, conv_id, "user", message)
@@ -400,19 +476,24 @@ class Orchestrator:
         user_id: str | None = None,
         channel: str | None = None,
     ) -> dict:
+        token = _accessed_ids.set([])
         try:
-            conv_id, result = await self._run_chat_agent(
-                message, conversation_id, user_id, channel=channel
-            )
-        except (ValueError, LookupError) as exc:
-            return self._chat_error_response(exc)
-        except Exception as exc:
-            llm_err = self._llm_provider_error(exc)
-            if llm_err is not None:
-                return llm_err
-            raise
+            try:
+                conv_id, result = await self._run_chat_agent(
+                    message, conversation_id, user_id, channel=channel
+                )
+            except (ValueError, LookupError) as exc:
+                return self._chat_error_response(exc)
+            except Exception as exc:
+                llm_err = self._llm_provider_error(exc)
+                if llm_err is not None:
+                    return llm_err
+                raise
 
-        await self._capture_chat_memory(user_id, message, result)
+            await self._capture_chat_memory(user_id, message, result, conv_id)
+            await self._finish_memory(user_id, conv_id)
+        finally:
+            _accessed_ids.reset(token)
 
         return {
             "message": result.message,
@@ -433,16 +514,21 @@ class Orchestrator:
     ) -> AsyncIterator[str]:
         yield json.dumps({"type": "status", "phase": "thinking"})
 
+        token = _accessed_ids.set([])
         try:
-            conv_id, result = await self._run_chat_agent(
-                message, conversation_id, user_id, channel=channel
-            )
-        except Exception as exc:
-            err = self._chat_error_response(exc)
-            yield json.dumps({"type": "error", "error": err["error"], "status_code": err["status_code"]})
-            return
+            try:
+                conv_id, result = await self._run_chat_agent(
+                    message, conversation_id, user_id, channel=channel
+                )
+            except Exception as exc:
+                err = self._chat_error_response(exc)
+                yield json.dumps({"type": "error", "error": err["error"], "status_code": err["status_code"]})
+                return
 
-        await self._capture_chat_memory(user_id, message, result)
+            await self._capture_chat_memory(user_id, message, result, conv_id)
+            await self._finish_memory(user_id, conv_id)
+        finally:
+            _accessed_ids.reset(token)
 
         if result.pending_action is not None:
             yield json.dumps(

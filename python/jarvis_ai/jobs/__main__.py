@@ -8,8 +8,16 @@ from jarvis_ai.actions.repository import PendingActionsRepository
 from jarvis_ai.config.settings import Settings
 from jarvis_ai.db import create_pool, run_migrations
 from jarvis_ai.delivery import build_delivery_stack
+from jarvis_ai.conversations.repository import ConversationsRepository
+from jarvis_ai.jobs.memory_extract import (
+    MemoryEmbedHandler,
+    MemoryExtractHandler,
+    enqueue_unembedded,
+)
 from jarvis_ai.jobs.reminder_fire import ReminderFireHandler
 from jarvis_ai.jobs.worker import ping_handler, run_once
+from jarvis_ai.memory.embeddings import build_embedder
+from jarvis_ai.memory.store import PostgresMemoryStore
 from jarvis_ai.reminders.repository import RemindersRepository
 from jarvis_ai.user_settings.repository import UserSettingsRepository
 
@@ -29,10 +37,21 @@ async def _loop() -> None:
     user_settings = UserSettingsRepository(pool)
     pending = PendingActionsRepository(pool)
     stack = build_delivery_stack(pool, settings, user_settings, reminders, pending)
+    embedder = build_embedder(settings)
+    memory = PostgresMemoryStore(pool, embedder=embedder)
+    conversations = ConversationsRepository(pool)
     handlers = {
         "ping": ping_handler,
         "reminder_fire": ReminderFireHandler(reminders, stack.notifier, stack.jobs),
         "daily_brief": stack.briefs.handle,
+        "memory_embed": MemoryEmbedHandler(memory, embedder),
+        "memory_extract": MemoryExtractHandler(
+            memory,
+            conversations,
+            user_settings,
+            stack.briefs._llm,
+            stack.notifier,
+        ),
     }
     logger.info(
         "job worker started poll=%ss batch=%s",
@@ -44,6 +63,7 @@ async def _loop() -> None:
             try:
                 await stack.jobs.heartbeat()
                 await stack.briefs.ensure_scheduled(datetime.now(timezone.utc))
+                await enqueue_unembedded(memory, stack.jobs)
                 claimed = await run_once(
                     stack.jobs,
                     handlers,

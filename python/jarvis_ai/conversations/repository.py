@@ -145,6 +145,63 @@ class ConversationsRepository:
         )
         return [_row_to_message(row) for row in rows]
 
+    async def get_summary(self, user_id: str, conversation_id: str) -> str | None:
+        value = await self._pool.fetchval(
+            """
+            SELECT summary
+            FROM conversations
+            WHERE user_id = $1 AND id = $2::uuid
+            """,
+            user_id,
+            conversation_id,
+        )
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    async def set_summary(self, user_id: str, conversation_id: str, summary: str) -> None:
+        await self._pool.execute(
+            """
+            UPDATE conversations
+            SET summary = $3, updated_at = NOW()
+            WHERE user_id = $1 AND id = $2::uuid
+            """,
+            user_id,
+            conversation_id,
+            summary,
+        )
+
+    async def count_user_messages(self, user_id: str, conversation_id: str) -> int:
+        value = await self._pool.fetchval(
+            """
+            SELECT COUNT(*)
+            FROM messages m
+            INNER JOIN conversations c ON c.id = m.conversation_id
+            WHERE c.user_id = $1 AND m.conversation_id = $2::uuid AND m.role = 'user'
+            """,
+            user_id,
+            conversation_id,
+        )
+        return int(value or 0)
+
+    async def latest_user_message_id(self, user_id: str, conversation_id: str) -> str | None:
+        value = await self._pool.fetchval(
+            """
+            SELECT m.id::text
+            FROM messages m
+            INNER JOIN conversations c ON c.id = m.conversation_id
+            WHERE c.user_id = $1 AND m.conversation_id = $2::uuid AND m.role = 'user'
+            ORDER BY m.created_at DESC
+            LIMIT 1
+            """,
+            user_id,
+            conversation_id,
+        )
+        if value is None:
+            return None
+        return str(value)
+
     async def list_conversations(self, user_id: str, limit: int = 20) -> list[Conversation]:
         rows = await self._pool.fetch(
             """

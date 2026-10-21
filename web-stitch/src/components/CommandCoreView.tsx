@@ -25,11 +25,12 @@ const TZ_PROMPT_DISMISS_KEY = "jarvis_tz_prompt_dismissed";
 type CommandCoreViewProps = {
   onLogout: () => void;
   onOpenSettings: () => void;
+  onOpenMemory: () => void;
 };
 
 type UiMessage = ChatMessage & { streaming?: boolean };
 
-export function CommandCoreView({ onLogout, onOpenSettings }: CommandCoreViewProps) {
+export function CommandCoreView({ onLogout, onOpenSettings, onOpenMemory }: CommandCoreViewProps) {
   const [conversations, setConversations] = useState<ConversationListItem[]>([]);
   const [current, setCurrent] = useState<ConversationListItem | null>(null);
   const [messages, setMessages] = useState<UiMessage[]>([]);
@@ -247,6 +248,14 @@ export function CommandCoreView({ onLogout, onOpenSettings }: CommandCoreViewPro
                 </div>
                 <button
                   type="button"
+                  onClick={onOpenMemory}
+                  className="w-full flex items-center gap-space-sm px-space-sm py-space-sm rounded text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-all"
+                >
+                  <MaterialIcon name="psychology" className="text-lg" />
+                  <span className="font-body-md text-body-md">Memory</span>
+                </button>
+                <button
+                  type="button"
                   onClick={onOpenSettings}
                   className="w-full flex items-center gap-space-sm px-space-sm py-space-sm rounded text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-all"
                 >
@@ -334,6 +343,9 @@ export function CommandCoreView({ onLogout, onOpenSettings }: CommandCoreViewPro
             <span className="font-label-md text-label-md text-primary tracking-widest uppercase hidden sm:inline">SYS // NEURAL STREAM ONLINE</span>
           </div>
           <div className="flex items-center gap-space-sm">
+            <button type="button" className="text-primary font-label-sm" onClick={onOpenMemory}>
+              Memory
+            </button>
             <button type="button" className="lg:hidden text-primary font-label-sm" onClick={startNewChat}>
               New
             </button>

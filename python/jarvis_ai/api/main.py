@@ -17,6 +17,8 @@ from jarvis_ai.config.settings import Settings
 from jarvis_ai.delivery import build_delivery_stack
 from jarvis_ai.conversations import ConversationsRepository, InMemoryConversationsStore
 from jarvis_ai.db import create_pool, run_migrations
+from jarvis_ai.memory.embeddings import build_embedder
+from jarvis_ai.memory.routes import router as memory_router
 from jarvis_ai.memory.store import InMemoryMemoryStore, PostgresMemoryStore
 from jarvis_ai.notes.memory import InMemoryNotesStore
 from jarvis_ai.notes.repository import NotesRepository
@@ -55,7 +57,7 @@ async def lifespan(app: FastAPI):
         notes = NotesRepository(pool)
         pending = PendingActionsRepository(pool)
         reminders = RemindersRepository(pool)
-        memory = PostgresMemoryStore(pool)
+        memory = PostgresMemoryStore(pool, embedder=build_embedder(settings))
         tool_logger = ToolCallLogger(pool)
         conversations = ConversationsRepository(pool)
         user_settings = UserSettingsRepository(pool)
@@ -73,6 +75,8 @@ async def lifespan(app: FastAPI):
 
     app.state.db_pool = pool
     app.state.settings = settings
+    app.state.memory = memory
+    app.state.jobs = jobs
     app.state.notifications = stack.notifications if stack is not None else None
     app.state.orchestrator = Orchestrator(
         settings,
@@ -103,6 +107,7 @@ async def lifespan(app: FastAPI):
             feature_enabled=settings.feature_telegram,
             jobs=jobs,
             briefs=stack.briefs,
+            memory=memory,
         )
     yield
     if telegram_client is not None:
@@ -113,6 +118,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="JARVIS AI", version="0.1.0", lifespan=lifespan)
 app.include_router(channel_router)
+app.include_router(memory_router)
 
 
 def get_orchestrator() -> Orchestrator:

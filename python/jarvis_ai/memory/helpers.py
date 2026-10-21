@@ -21,6 +21,7 @@ async def add_fact_if_new(
     user_id: str,
     content: str,
     source: str = "chat",
+    kind: str = "fact",
 ) -> str | None:
     """Insert a fact unless a very similar one already exists for this user."""
     normalized = normalize_fact_content(content)
@@ -34,6 +35,9 @@ async def add_fact_if_new(
         if existing == needle or needle in existing or existing in needle:
             return None
 
+    if hasattr(store, "add"):
+        fact_id, _embedded = await store.add(user_id, normalized, source=source, kind=kind)
+        return fact_id
     return await store.add_fact(user_id, normalized, source)
 
 
